@@ -83,3 +83,12 @@ y = m(torch.randn(1, 4, 32, 64))
 m69 = GraphCast_lite(in_channels=69) # FengWu-stack width on tiny grid
 y69 = m69(torch.randn(1, 69, 32, 64))
 ```
+
+---
+
+## 5. JAX submodule parity
+
+Small-scale numerical parity vs DeepMind JAX (mesh level 0/1, MLP+LayerNorm,
+one InteractionNetwork layer) is tracked in [graphcast_parity.md](graphcast_parity.md).
+**Full-model / checkpoint equality is not claimed.**
+

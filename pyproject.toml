@@ -30,6 +30,17 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["pytest>=7.0", "pytest-cov"]
 data = ["cdsapi>=0.6.1"]
+# DeepMind GraphCast/WeatherNext JAX stack for tests/parity only (CPU is enough).
+parity = [
+  "jax>=0.4.20",
+  "jaxlib>=0.4.20",
+  "dm-haiku>=0.0.11",
+  "jraph>=0.0.6.dev0",
+  "dm-tree>=0.1.8",
+  "chex>=0.1.85",
+  "xarray>=2023.1.0",
+  "scipy>=1.10.0",
+]
 
 [project.urls]
 Homepage = "https://github.com/GISWLH/WeatherAI"

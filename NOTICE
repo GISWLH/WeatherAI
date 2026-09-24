@@ -76,6 +76,25 @@ See `docs/graphcast_specs.md` for paper vs skeleton differences.
 - FengWu: Chen et al., arXiv:2304.02948 — https://arxiv.org/abs/2304.02948
 - GraphCast: Lam et al., arXiv:2212.12794 — https://arxiv.org/abs/2212.12794
 
+
+5) DeepMind GraphCast / WeatherNext (Apache-2.0) — reference only
+----------------------------------------------------------------
+Source: https://github.com/google-deepmind/graphcast
+Copyright (c) Google LLC / DeepMind Technologies Limited
+
+WeatherAI’s `weatherai.models.graphcast` package is an **independent MIT**
+PyTorch reimplementation. It does **not** copy or relicense DeepMind sources
+as MIT.
+
+For **parity tests** only, developers may clone the official repository
+(e.g. under `/workspace/tmp/graphcast-jax`) and import JAX modules from that
+tree. Those Apache-2.0 files stay outside the `weatherai/` package. See
+`docs/graphcast_parity.md` and `tests/parity/graphcast/`.
+
+Mesh geometry (icosahedron face index table / refinement order) is aligned with
+the published helpers for interoperability; that is geometric compatibility, not
+a vendored copy of their Python modules.
+
 Package rename
 --------------
 Imports use the package name `weatherai` (not `weatherlearn`). Relative module

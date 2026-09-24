@@ -1,8 +1,10 @@
 """Icosahedral multi-mesh and lat-lon grid graph construction (numpy).
 
-Original WeatherAI helpers inspired by Lam et al. GraphCast (Science 2023 /
-arXiv:2212.12794). Independent reimplementation — not copied from DeepMind JAX
-or NVIDIA PhysicsNeMo sources.
+Independent WeatherAI reimplementation inspired by Lam et al. GraphCast
+(Science 2023 / arXiv:2212.12794). Geometry at mesh_level 0/1 is aligned with
+DeepMind's published icosahedral helpers (``weathernext.utils.icosahedral_mesh``
+in google-deepmind/graphcast, Apache-2.0) for small-scale parity tests — we do
+**not** vendor their sources into this MIT package.
 """
 
 from __future__ import annotations
@@ -14,49 +16,76 @@ import numpy as np
 
 _PHI = (1.0 + np.sqrt(5.0)) / 2.0
 
+# Counter-clockwise faces for the Wikipedia / DeepMind regular-icosahedron
+# vertex ordering (see get_icosahedron). Kept as a compact index table so
+# node XYZ and edge connectivity can match the JAX reference at level 0/1.
+_ICOSAHEDRON_FACES: Tuple[Tuple[int, int, int], ...] = (
+    (0, 1, 2),
+    (0, 6, 1),
+    (8, 0, 2),
+    (8, 4, 0),
+    (3, 8, 2),
+    (3, 2, 7),
+    (7, 2, 1),
+    (0, 4, 6),
+    (4, 11, 6),
+    (6, 11, 5),
+    (1, 5, 7),
+    (4, 10, 11),
+    (4, 8, 10),
+    (10, 8, 3),
+    (10, 3, 9),
+    (11, 10, 9),
+    (11, 9, 5),
+    (5, 9, 7),
+    (9, 3, 7),
+    (1, 6, 5),
+)
+
 
 def _unit(v: np.ndarray) -> np.ndarray:
     n = np.linalg.norm(v, axis=-1, keepdims=True)
     return v / np.maximum(n, 1e-12)
 
 
-def icosahedron_vertices() -> np.ndarray:
-    """Return (12, 3) unit-sphere vertices of a regular icosahedron."""
-    verts: List[List[float]] = []
-    for x in (-1.0, 1.0):
-        for y in (-1.0, 1.0):
-            verts.append([0.0, x, y * _PHI])
-            verts.append([x, y * _PHI, 0.0])
-            verts.append([x * _PHI, 0.0, y])
-    return _unit(np.asarray(verts, dtype=np.float64))
+def _rotation_matrix_y(angle: float) -> np.ndarray:
+    """Active Y-axis rotation (matches ``scipy.spatial.transform.Rotation``)."""
+    c, s = float(np.cos(angle)), float(np.sin(angle))
+    return np.asarray([[c, 0.0, s], [0.0, 1.0, 0.0], [-s, 0.0, c]], dtype=np.float64)
+
+
+def icosahedron_vertices(pole_parallel_faces: bool = True) -> np.ndarray:
+    """Return (12, 3) unit-sphere vertices of a regular icosahedron.
+
+    Vertex generation order and optional pole-parallel rotation match the
+    DeepMind JAX helper (default ``pole_parallel_faces=True`` avoids nodes
+    exactly at the geographic poles).
+    """
+    verts: List[Tuple[float, float, float]] = []
+    for c1 in (1.0, -1.0):
+        for c2 in (_PHI, -_PHI):
+            verts.append((c1, c2, 0.0))
+            verts.append((0.0, c1, c2))
+            verts.append((c2, 0.0, c1))
+    vertices = np.asarray(verts, dtype=np.float64)
+    vertices /= np.linalg.norm([1.0, _PHI])
+
+    if pole_parallel_faces:
+        angle_between_faces = 2.0 * np.arcsin(_PHI / np.sqrt(3.0))
+        rotation_angle = (np.pi - angle_between_faces) / 2.0
+        vertices = vertices @ _rotation_matrix_y(rotation_angle)
+
+    return _unit(vertices).astype(np.float64)
 
 
 def icosahedron_faces(vertices: np.ndarray | None = None) -> np.ndarray:
-    """Return (20, 3) triangular faces from nearest-neighbor edges."""
-    verts = icosahedron_vertices() if vertices is None else vertices
-    n = verts.shape[0]
-    dist = np.linalg.norm(verts[:, None, :] - verts[None, :, :], axis=-1)
-    # Shortest nonzero distance = edge length of the regular icosahedron
-    iu = np.triu_indices(n, 1)
-    edge_len = float(dist[iu].min())
-    edges = np.argwhere((dist > 0) & (dist <= edge_len * 1.01))
-    edges = edges[edges[:, 0] < edges[:, 1]]
-    edge_set = {tuple(map(int, e)) for e in edges}
-    faces: List[Tuple[int, int, int]] = []
-    for i in range(n):
-        for j in range(i + 1, n):
-            if (i, j) not in edge_set:
-                continue
-            for k in range(j + 1, n):
-                if (i, k) in edge_set and (j, k) in edge_set:
-                    normal = np.cross(verts[j] - verts[i], verts[k] - verts[i])
-                    if np.dot(normal, verts[i]) < 0:
-                        faces.append((i, k, j))
-                    else:
-                        faces.append((i, j, k))
-    if len(faces) != 20:
-        raise RuntimeError(f"Expected 20 icosahedron faces, got {len(faces)}")
-    return np.asarray(faces, dtype=np.int64)
+    """Return (20, 3) triangular faces (CCW from outside).
+
+    ``vertices`` is accepted for API compatibility; face indices are the fixed
+    table for ``icosahedron_vertices()`` ordering (not rediscovered via k-NN).
+    """
+    del vertices  # ordering is defined by icosahedron_vertices()
+    return np.asarray(_ICOSAHEDRON_FACES, dtype=np.int64)
 
 
 def mesh_num_nodes(level: int) -> int:
@@ -66,11 +95,28 @@ def mesh_num_nodes(level: int) -> int:
     return 10 * (4**level) + 2
 
 
+def faces_to_edges(faces: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    """Directed edges from triangular faces: i→j, j→k, k→i per face.
+
+    Same convention as DeepMind ``icosahedral_mesh.faces_to_edges``. For a
+    closed oriented surface this yields a bidirectional edge set.
+    """
+    faces = np.asarray(faces, dtype=np.int64)
+    if faces.ndim != 2 or faces.shape[-1] != 3:
+        raise ValueError(f"faces must be [F,3], got {faces.shape}")
+    senders = np.concatenate([faces[:, 0], faces[:, 1], faces[:, 2]])
+    receivers = np.concatenate([faces[:, 1], faces[:, 2], faces[:, 0]])
+    return senders.astype(np.int64), receivers.astype(np.int64)
+
+
 def refine_mesh(
     vertices: np.ndarray,
     faces: np.ndarray,
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """One 1→4 triangle subdivision with sphere reprojection.
+
+    Face child order matches DeepMind ``_two_split_unit_sphere_triangle_faces``
+    so refined vertex indices line up with the JAX hierarchy.
 
     Returns new_vertices, new_faces, and undirected edges of the refined mesh.
     """
@@ -88,10 +134,19 @@ def refine_mesh(
         return idx
 
     new_faces: List[Tuple[int, int, int]] = []
-    for a, b, c in faces:
-        a, b, c = int(a), int(b), int(c)
-        ab, bc, ca = midpoint(a, b), midpoint(b, c), midpoint(c, a)
-        new_faces.extend([(a, ab, ca), (b, bc, ab), (c, ca, bc), (ab, bc, ca)])
+    for ind1, ind2, ind3 in faces:
+        ind1, ind2, ind3 = int(ind1), int(ind2), int(ind3)
+        ind12 = midpoint(ind1, ind2)
+        ind23 = midpoint(ind2, ind3)
+        ind31 = midpoint(ind3, ind1)
+        new_faces.extend(
+            [
+                (ind1, ind12, ind31),
+                (ind12, ind2, ind23),
+                (ind31, ind23, ind3),
+                (ind12, ind23, ind31),
+            ]
+        )
 
     new_vertices = np.stack(verts, axis=0).astype(np.float64)
     new_faces_arr = np.asarray(new_faces, dtype=np.int64)
@@ -103,33 +158,68 @@ def refine_mesh(
     return new_vertices, new_faces_arr, new_edges
 
 
-def build_multimesh(mesh_level: int = 2) -> Tuple[np.ndarray, np.ndarray, List[np.ndarray]]:
+def build_mesh_hierarchy(
+    mesh_level: int = 2,
+    pole_parallel_faces: bool = True,
+) -> List[Tuple[np.ndarray, np.ndarray]]:
+    """Return ``[(vertices, faces), ...]`` from level 0 .. ``mesh_level``."""
+    nodes = icosahedron_vertices(pole_parallel_faces=pole_parallel_faces)
+    faces = icosahedron_faces(nodes)
+    out: List[Tuple[np.ndarray, np.ndarray]] = [(nodes, faces)]
+    for _ in range(mesh_level):
+        nodes, faces, _ = refine_mesh(nodes, faces)
+        out.append((nodes, faces))
+    return out
+
+
+def build_multimesh(
+    mesh_level: int = 2,
+    pole_parallel_faces: bool = True,
+) -> Tuple[np.ndarray, np.ndarray, List[np.ndarray]]:
     """Build finest-level nodes + multi-mesh undirected edges.
 
     Paper GraphCast uses mesh_level ≈ 6 (40,962 nodes). This skeleton defaults
     to smaller levels for CPU / ZeroGPU smoke tests.
+
+    Undirected multi-mesh edges are the union of undirected edges over levels
+    0..mesh_level (same cardinality as DeepMind ``merge_meshes`` + undirected).
     """
-    nodes = icosahedron_vertices()
-    faces = icosahedron_faces(nodes)
-    e0 = set()
-    for a, b, c in faces:
-        for u, v in ((int(a), int(b)), (int(b), int(c)), (int(c), int(a))):
-            e0.add((u, v) if u < v else (v, u))
-    edges_per_level: List[np.ndarray] = [np.asarray(sorted(e0), dtype=np.int64)]
-    all_edges = set(e0)
+    hierarchy = build_mesh_hierarchy(mesh_level, pole_parallel_faces=pole_parallel_faces)
+    edges_per_level: List[np.ndarray] = []
+    all_edges: set = set()
+    for _nodes, faces in hierarchy:
+        e_set = set()
+        for a, b, c in faces:
+            for u, v in ((int(a), int(b)), (int(b), int(c)), (int(c), int(a))):
+                key = (u, v) if u < v else (v, u)
+                e_set.add(key)
+                all_edges.add(key)
+        edges_per_level.append(np.asarray(sorted(e_set), dtype=np.int64))
 
-    for _ in range(mesh_level):
-        nodes, faces, new_e = refine_mesh(nodes, faces)
-        edges_per_level.append(new_e)
-        for u, v in new_e:
-            all_edges.add((int(u), int(v)))
-
+    nodes = hierarchy[-1][0]
     expected = mesh_num_nodes(mesh_level)
     if nodes.shape[0] != expected:
-        raise RuntimeError(f"Expected {expected} mesh nodes at level {mesh_level}, got {nodes.shape[0]}")
+        raise RuntimeError(
+            f"Expected {expected} mesh nodes at level {mesh_level}, got {nodes.shape[0]}"
+        )
 
     multi_edges = np.asarray(sorted(all_edges), dtype=np.int64)
     return nodes.astype(np.float64), multi_edges, edges_per_level
+
+
+def build_mesh_faces(
+    mesh_level: int = 2,
+    use_multi_mesh: bool = True,
+    pole_parallel_faces: bool = True,
+) -> Tuple[np.ndarray, np.ndarray]:
+    """Finest vertices and face array (merged across levels if multi-mesh)."""
+    hierarchy = build_mesh_hierarchy(mesh_level, pole_parallel_faces=pole_parallel_faces)
+    nodes = hierarchy[-1][0]
+    if use_multi_mesh:
+        faces = np.concatenate([f for _, f in hierarchy], axis=0)
+    else:
+        faces = hierarchy[-1][1]
+    return nodes.astype(np.float64), faces.astype(np.int64)
 
 
 def latlon_grid_nodes(img_size: Tuple[int, int]) -> np.ndarray:
@@ -211,13 +301,17 @@ def build_graphs(
     g2m_k: int = 4,
     m2g_k: int = 4,
     use_multi_mesh: bool = True,
+    pole_parallel_faces: bool = True,
 ) -> GraphCastGraphs:
-    """Construct mesh, grid, and bipartite / mesh edge arrays."""
-    mesh_xyz, multi_edges, edges_per_level = build_multimesh(mesh_level)
-    undirected = multi_edges if use_multi_mesh else edges_per_level[-1]
-    directed = _directed_from_undirected(undirected)
-    mesh_senders = directed[:, 0]
-    mesh_receivers = directed[:, 1]
+    """Construct mesh, grid, and bipartite / mesh edge arrays.
+
+    Mesh directed edges come from ``faces_to_edges`` on (multi-)mesh faces so
+    ordering matches the JAX reference when the same hierarchy is used.
+    """
+    mesh_xyz, faces = build_mesh_faces(
+        mesh_level, use_multi_mesh=use_multi_mesh, pole_parallel_faces=pole_parallel_faces
+    )
+    mesh_senders, mesh_receivers = faces_to_edges(faces)
     mesh_edge_attr = edge_relative_features(mesh_xyz, mesh_xyz, mesh_senders, mesh_receivers)
 
     grid_xyz = latlon_grid_nodes(img_size)

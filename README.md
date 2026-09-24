@@ -24,6 +24,7 @@
 Architecture notes:
 - FengWu: [docs/fengwu_specs.md](docs/fengwu_specs.md)
 - GraphCast: [docs/graphcast_specs.md](docs/graphcast_specs.md)
+- GraphCast JAX parity (submodules): [docs/graphcast_parity.md](docs/graphcast_parity.md)
 
 ## Install / 安装
 
@@ -70,6 +71,10 @@ from weatherai import Pangu, FuXi, FengWu, FengWu_lite, GraphCast, GraphCast_lit
 ```bash
 pip install -e ".[dev]"
 pytest tests/models/fengwu tests/models/graphcast -q
+# optional GraphCast JAX↔Torch submodule parity (needs clone + [parity] extras):
+# git clone --depth 1 https://github.com/google-deepmind/graphcast.git /workspace/tmp/graphcast-jax
+# pip install -e ".[parity]"
+# pytest tests/parity/graphcast -q
 # optional fuller suite (may be slower / need more RAM for full Pangu):
 # pytest tests -q
 ```
@@ -81,6 +86,8 @@ pytest tests/models/fengwu tests/models/graphcast -q
 - **NOTICE:** [NOTICE](NOTICE) — WeatherLearn (Copyright Zhuoqun Li / contributors),
   FengWu paper (Chen et al., arXiv:2304.02948), GraphCast paper (Lam et al.,
   arXiv:2212.12794; independent reimplementation).
+  Parity tests may reference google-deepmind/graphcast (Apache-2.0) from a local clone;
+  that code is not vendored into `weatherai/`.
 - Upstream: https://github.com/lizhuoq/WeatherLearn  
 - FengWu branch/PR context: `GISWLH/WeatherLearn@feat/fengwu`,
   [lizhuoq/WeatherLearn#14](https://github.com/lizhuoq/WeatherLearn/pull/14)
@@ -96,6 +103,8 @@ pytest tests/models/fengwu tests/models/graphcast -q
 
 - [ ] Pretrained weight download helpers (no invented checkpoints in-repo)
 - [ ] Training / finetune recipes (kept out of v0.1 for a clean starter zoo)
+- [x] GraphCast small-scale JAX parity (mesh / MLP / one GraphNet layer)
+- [ ] GraphCast Grid2Mesh bipartite + full processor parity
 - [ ] More models and evaluation utilities
 
 ## Disclaimer
