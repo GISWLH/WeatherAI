@@ -1,0 +1,69 @@
+WeatherAI — Attribution & Third-Party Notices
+=============================================
+
+This repository (`GISWLH/WeatherAI`, package `weatherai`) is an **independent
+personal project** by Longhao Wang (GitHub: GISWLH). It is **not** a GitHub
+fork of lizhuoq/WeatherLearn, though substantial model code is adapted from
+that project under the MIT License.
+
+1) WeatherLearn (MIT)
+---------------------
+Source: https://github.com/lizhuoq/WeatherLearn
+Copyright (c) 2023 Zhuoqun Li and contributors
+
+Adapted components (non-exhaustive):
+  - Pangu-Weather PyTorch implementation (`weatherai/models/pangu/`)
+  - FuXi PyTorch implementation (`weatherai/models/fuxi/`)
+  - Shared utilities under `weatherai/models/pangu/utils/`
+  - Corresponding unit tests under `tests/models/pangu/` and `tests/models/fuxi/`
+
+FengWu skeletons were developed on the personal branch
+`GISWLH/WeatherLearn@feat/fengwu` (related discussion/PR:
+https://github.com/lizhuoq/WeatherLearn/pull/14) and are included here under
+the same MIT-derived adaptation.
+
+Original WeatherLearn MIT license text (verbatim):
+
+    The MIT License (MIT)
+
+    Copyright (c) 2023 Zhuoqun Li
+
+    Permission is hereby granted, free of charge, to any person obtaining a copy
+    of this software and associated documentation files (the "Software"), to deal
+    in the Software without restriction, including without limitation the rights
+    to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+    copies of the Software, and to permit persons to whom the Software is
+    furnished to do so, subject to the following conditions:
+
+    The above copyright notice and this permission notice shall be included in
+    all copies or substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+    THE SOFTWARE.
+
+2) FengWu paper
+---------------
+Chen et al., "FengWu: Pushing the Skillful Global Medium-range Weather
+Forecast beyond 10 Days Lead", arXiv:2304.02948
+https://arxiv.org/abs/2304.02948
+
+The `FengWu` / `FengWu_lite` modules are a clean WeatherLearn-style
+reimplementation inspired by the paper architecture (encode–fuse–decode,
+optional uncertainty head). They do **not** vendor proprietary training
+configs or non-MIT checkpoints.
+
+3) Related papers (models)
+--------------------------
+- Pangu-Weather: Bi et al., arXiv:2211.02556 — https://arxiv.org/abs/2211.02556
+- FuXi: Chen et al., arXiv:2306.12873 — https://arxiv.org/abs/2306.12873
+- FengWu: Chen et al., arXiv:2304.02948 — https://arxiv.org/abs/2304.02948
+
+Package rename
+--------------
+Imports use the package name `weatherai` (not `weatherlearn`). Relative module
+layout mirrors WeatherLearn-style `models/{pangu,fuxi,fengwu}` for familiarity.

@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "weatherai"
+version = "0.1.0"
+description = "Personal weather AI model zoo (PyTorch): Pangu, FuXi, FengWu, and more."
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.9"
+authors = [
+  { name = "Longhao Wang", email = "hhuwlh@163.com" },
+]
+keywords = ["weather", "AI", "pytorch", "pangu", "fuxi", "fengwu", "meteorology"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+  "Topic :: Scientific/Engineering :: Atmospheric Science",
+]
+dependencies = [
+  "torch>=2.1.0",
+  "timm>=0.9.10",
+  "numpy>=1.23.5",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0", "pytest-cov"]
+data = ["cdsapi>=0.6.1"]
+
+[project.urls]
+Homepage = "https://github.com/GISWLH/WeatherAI"
+Repository = "https://github.com/GISWLH/WeatherAI"
+Issues = "https://github.com/GISWLH/WeatherAI/issues"
+
+[tool.setuptools.packages.find]
+include = ["weatherai*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
