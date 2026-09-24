@@ -1,10 +1,20 @@
 """WeatherAI: personal PyTorch weather deep learning model zoo.
 
 Independent project by Longhao Wang (GISWLH). Model implementations are
-adapted from WeatherLearn (MIT) and the FengWu paper (arXiv:2304.02948).
+adapted from WeatherLearn (MIT) and paper-inspired skeletons (FengWu,
+GraphCast).
 """
 
-from .models import FengWu, FengWu_lite, FuXi, Fuxi, Pangu, Pangu_lite
+from .models import (
+    FengWu,
+    FengWu_lite,
+    FuXi,
+    Fuxi,
+    GraphCast,
+    GraphCast_lite,
+    Pangu,
+    Pangu_lite,
+)
 
 __version__ = "0.1.0"
 __all__ = [
@@ -14,4 +24,6 @@ __all__ = [
     "Fuxi",
     "FengWu",
     "FengWu_lite",
+    "GraphCast",
+    "GraphCast_lite",
 ]

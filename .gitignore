@@ -57,3 +57,7 @@ wandb/
 runs/
 outputs/
 checkpoints/
+
+# Local HF Space staging (uploaded via huggingface_hub)
+hf_space_graphcast/
+

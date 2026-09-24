@@ -5,14 +5,14 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "weatherai"
 version = "0.1.0"
-description = "Personal weather AI model zoo (PyTorch): Pangu, FuXi, FengWu, and more."
+description = "Personal weather AI model zoo (PyTorch): Pangu, FuXi, FengWu, GraphCast, and more."
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.9"
 authors = [
   { name = "Longhao Wang", email = "hhuwlh@163.com" },
 ]
-keywords = ["weather", "AI", "pytorch", "pangu", "fuxi", "fengwu", "meteorology"]
+keywords = ["weather", "AI", "pytorch", "pangu", "fuxi", "fengwu", "graphcast", "meteorology"]
 classifiers = [
   "Development Status :: 3 - Alpha",
   "Intended Audience :: Science/Research",

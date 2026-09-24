@@ -57,13 +57,27 @@ reimplementation inspired by the paper architecture (encode–fuse–decode,
 optional uncertainty head). They do **not** vendor proprietary training
 configs or non-MIT checkpoints.
 
-3) Related papers (models)
+3) GraphCast paper
+------------------
+Lam et al., "GraphCast: Learning skillful medium-range global weather
+forecasting", Science 2023 / arXiv:2212.12794
+https://arxiv.org/abs/2212.12794
+
+The `GraphCast` / `GraphCast_lite` modules are an independent WeatherAI-style
+PyTorch reimplementation (lat-lon grid ↔ icosahedral multi-mesh
+encode–process–decode with residual next-step prediction). They do **not**
+copy source from google-deepmind/graphcast or NVIDIA PhysicsNeMo (Apache-2.0).
+See `docs/graphcast_specs.md` for paper vs skeleton differences.
+
+4) Related papers (models)
 --------------------------
 - Pangu-Weather: Bi et al., arXiv:2211.02556 — https://arxiv.org/abs/2211.02556
 - FuXi: Chen et al., arXiv:2306.12873 — https://arxiv.org/abs/2306.12873
 - FengWu: Chen et al., arXiv:2304.02948 — https://arxiv.org/abs/2304.02948
+- GraphCast: Lam et al., arXiv:2212.12794 — https://arxiv.org/abs/2212.12794
 
 Package rename
 --------------
 Imports use the package name `weatherai` (not `weatherlearn`). Relative module
-layout mirrors WeatherLearn-style `models/{pangu,fuxi,fengwu}` for familiarity.
+layout mirrors WeatherLearn-style `models/{pangu,fuxi,fengwu,graphcast}` for
+familiarity.
