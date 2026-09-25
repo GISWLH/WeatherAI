@@ -40,6 +40,9 @@ parity = [
   "chex>=0.1.85",
   "xarray>=2023.1.0",
   "scipy>=1.10.0",
+  "trimesh>=4.0",
+  "rtree>=1.0",
+  "gdm-xarray-jax @ git+https://github.com/google-deepmind/xarray_jax.git@v0.1.1",
 ]
 
 [project.urls]

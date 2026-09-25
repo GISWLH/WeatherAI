@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import numpy as np
+import pytest
 import torch
 
 from weatherai.models.graphcast.layers import GraphNetBlock
@@ -18,7 +19,8 @@ from ._helpers import (
 
 
 @requires_jax_parity
-def test_one_graphnet_layer_matches_jraph_interaction_network():
+@pytest.mark.parametrize("act", ["swish", "relu"])
+def test_one_graphnet_layer_matches_jraph_interaction_network(act):
     import jax
     import jax.numpy as jnp
     import haiku as hk
@@ -38,12 +40,12 @@ def test_one_graphnet_layer_matches_jraph_interaction_network():
     def forward(nodes, edges):
         def edge_update(e, s, r):
             x = jnp.concatenate([e, s, r], axis=-1)
-            y = hk.nets.MLP([latent, latent], activation=jax.nn.relu, name="edge_mlp")(x)
+            y = hk.nets.MLP([latent, latent], activation={"swish": jax.nn.swish, "relu": jax.nn.relu}[act], name="edge_mlp")(x)
             return hk.LayerNorm(-1, True, True, name="edge_ln")(y)
 
         def node_update(n, rec_msg):
             x = jnp.concatenate([n, rec_msg], axis=-1)
-            y = hk.nets.MLP([latent, latent], activation=jax.nn.relu, name="node_mlp")(x)
+            y = hk.nets.MLP([latent, latent], activation={"swish": jax.nn.swish, "relu": jax.nn.relu}[act], name="node_mlp")(x)
             return hk.LayerNorm(-1, True, True, name="node_ln")(y)
 
         net = jraph.InteractionNetwork(
@@ -71,7 +73,9 @@ def test_one_graphnet_layer_matches_jraph_interaction_network():
     yn, ye = [np.asarray(t) for t in hk_net.apply(params, jnp.asarray(nodes_np), jnp.asarray(edges_np))]
 
     flat = flatten_haiku_params(params)
-    block = GraphNetBlock(latent, hidden_dim=latent, n_hidden=1, activation="relu")
+    block = GraphNetBlock(
+        latent, hidden_dim=latent, n_hidden=1, activation={"swish": "silu", "relu": "relu"}[act]
+    )
     load_haiku_mlp_into_torch(block.edge_mlp, flat, "edge_mlp", "edge_ln")
     load_haiku_mlp_into_torch(block.node_mlp, flat, "node_mlp", "node_ln")
 

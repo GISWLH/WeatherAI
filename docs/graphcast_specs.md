@@ -26,10 +26,10 @@ JAX GraphCast or NVIDIA PhysicsNeMo GraphCast (Apache-2.0).
 | Block | Paper | Skeleton in `weatherai/models/graphcast` |
 |-------|-------|------------------------------------------|
 | Mesh | Refined icosahedron **level 6** (40,962 nodes); **multi-mesh** = union of edges levels 0…6 | `mesh_level` default **2** (162 nodes); lite **1** (42). `use_multi_mesh` flag |
-| Grid2Mesh | Bipartite radius edges; 1 GNN step; embed grid+mesh | k-NN bipartite (`g2m_k`); `BipartiteGraphNetBlock` |
+| Grid2Mesh | Bipartite radius edges; 1 GNN step; embed grid+mesh | Radius query (0.6 × longest finest edge, as JAX); `BipartiteGraphNetBlock` (grid: `g += MLP(g)`) |
 | Processor | **16** unshared mesh GNN layers | `processor_layers` (default 4 / lite 2) |
-| Mesh2Grid | Bipartite; 1 GNN step | k-NN (`m2g_k`); bipartite block |
-| Head | MLP → grid channels | `grid_out` MLP → `out_channels` |
+| Mesh2Grid | Bipartite; 1 GNN step | Containing finest triangle, 3 edges / grid point (`m2g_backend` numpy or trimesh); bipartite block |
+| Head | MLP → grid channels | `grid_out` MLP (no LayerNorm) → `out_channels` |
 | Engine | JAX + typed GraphNets | **Pure PyTorch + numpy** (no PyG / DGL) |
 
 ### Mesh node counts
@@ -65,9 +65,8 @@ Paper reference scale (not the default ctor): mesh_level≈6, processor_layers=1
 - **No** autoregressive rollout training or curriculum
 - **No** latitude-weighted loss / per-variable pressure weighting
 - **No** pretrained checkpoints
-- Bipartite edges use **k-NN**, not paper radius queries
 - Defaults are **smoke-sized**; scale `mesh_level` / `hidden_dim` toward paper for research
-- InteractionNetwork MLPs are a simplified faithful sketch, not a line-by-line port
+- Stage numerics (graphs, features, Grid2Mesh, processor, Mesh2Grid) are parity-tested against DeepMind JAX GraphCast and NVIDIA PhysicsNeMo on tiny cases, see [graphcast_parity.md](graphcast_parity.md). No checkpoint parity.
 
 ---
 

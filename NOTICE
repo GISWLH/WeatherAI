@@ -95,6 +95,17 @@ Mesh geometry (icosahedron face index table / refinement order) is aligned with
 the published helpers for interoperability; that is geometric compatibility, not
 a vendored copy of their Python modules.
 
+6) NVIDIA PhysicsNeMo GraphCast (Apache-2.0) — reference only
+--------------------------------------------------------------
+Source: https://github.com/NVIDIA/physicsnemo
+Copyright (c) NVIDIA CORPORATION & AFFILIATES
+
+Used only as a second numerical reference in `tests/parity/graphcast/`
+(imported from a local clone / separate virtualenv, e.g.
+`/workspace/tmp/physicsnemo`). No PhysicsNeMo source is copied into, or
+relicensed as part of, the MIT `weatherai/` package. Documented behavioural
+differences are listed in `docs/graphcast_parity.md`.
+
 Package rename
 --------------
 Imports use the package name `weatherai` (not `weatherlearn`). Relative module

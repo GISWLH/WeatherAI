@@ -99,3 +99,70 @@ def max_abs_rel(a: np.ndarray, b: np.ndarray) -> tuple[float, float]:
     diff = np.abs(a - b)
     rel = diff / np.maximum(np.abs(b), 1e-8)
     return float(diff.max()), float(rel.max())
+
+
+def jax_graphcast_available() -> bool:
+    """Real JAX GraphCast (weathernext1_graph) importable, incl. its graph builders."""
+    if not jax_stack_available():
+        return False
+    try:
+        ensure_jax_ref_on_path()
+        import rtree  # noqa: F401  (trimesh nearest-on-surface)
+        import scipy  # noqa: F401  (cKDTree radius query)
+        import trimesh  # noqa: F401
+        from weathernext.weathernext1_graph import graphcast  # noqa: F401
+    except Exception:
+        return False
+    return True
+
+
+requires_jax = pytest.mark.skipif(
+    not jax_graphcast_available(),
+    reason="DeepMind JAX GraphCast reference unavailable (needs jax/haiku/jraph/xarray_jax/"
+    "trimesh/rtree/scipy + clone at WEATHERAI_GRAPHCAST_JAX_ROOT); pip install -e '.[parity]'",
+)
+
+
+def physicsnemo_available() -> bool:
+    try:
+        import torch_geometric  # noqa: F401
+        import torch_scatter  # noqa: F401
+        from physicsnemo.nn.module.gnn_layers import utils as nv_utils
+        from physicsnemo.nn.module.gnn_layers.mesh_graph_encoder import MeshGraphEncoder  # noqa: F401
+    except Exception:  # ImportError, or missing optional deps at import time
+        return False
+    return bool(getattr(nv_utils, "PYG_AVAILABLE", True))
+
+
+requires_physicsnemo = pytest.mark.skipif(
+    not physicsnemo_available(),
+    reason="NVIDIA PhysicsNeMo + torch_geometric/torch_scatter/torch_sparse required "
+    "(see docs/graphcast_parity.md, 'parity venv')",
+)
+
+
+def trimesh_available() -> bool:
+    try:
+        import rtree  # noqa: F401
+        import trimesh  # noqa: F401
+    except ImportError:
+        return False
+    return True
+
+
+requires_trimesh = pytest.mark.skipif(
+    not trimesh_available(), reason="trimesh + rtree required (DeepMind mesh2grid builder)"
+)
+
+
+def assert_close(name: str, actual, expected, atol: float = ATOL, rtol: float = RTOL) -> tuple[float, float]:
+    """``np.testing.assert_allclose`` with a readable max-abs/max-rel message."""
+    a = np.asarray(actual, dtype=np.float64)
+    b = np.asarray(expected, dtype=np.float64)
+    assert a.shape == b.shape, f"{name}: shape {a.shape} != {b.shape}"
+    abs_err, rel_err = max_abs_rel(a, b)
+    np.testing.assert_allclose(
+        a, b, atol=atol, rtol=rtol,
+        err_msg=f"{name}: max_abs={abs_err:.3e} max_rel={rel_err:.3e}",
+    )
+    return abs_err, rel_err

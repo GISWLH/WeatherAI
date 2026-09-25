@@ -2,10 +2,16 @@
 
 Original WeatherAI code (InteractionNetwork-style). No torch_geometric / DGL.
 
-MLP + GraphNetBlock numerics are aligned with DeepMind GraphCast / jraph
-InteractionNetwork + Haiku MLP→LayerNorm (see ``docs/graphcast_parity.md``):
-edge/node MLPs emit *deltas*; node aggregation uses edge deltas **before**
-residual add (matching JAX ``DeepTypedGraphNet._process_step``).
+Numerics follow DeepMind GraphCast (``DeepTypedGraphNet`` built by
+``graphcast.GraphCast``) and are covered by ``tests/parity/graphcast``:
+
+* MLPs are ``Linear → act → … → Linear → LayerNorm``; activation **SiLU**
+  ("swish", what GraphCast passes for grid2mesh / mesh / mesh2grid).
+* Edge/node MLPs emit *deltas* that are added as residuals outside the MLP.
+* Node updates aggregate (sum) the **edge deltas** of incoming edges and
+  concatenate ``[node, aggregated]``.
+
+See ``docs/graphcast_parity.md`` for the verified stage-by-stage matrix.
 """
 
 from __future__ import annotations
@@ -17,14 +23,20 @@ from torch import nn
 
 Activation = Union[str, Callable[[torch.Tensor], torch.Tensor]]
 
+#: Default MLP activation (GraphCast uses ``activation="swish"``).
+DEFAULT_ACTIVATION = "silu"
+
 
 def scatter_sum(src: torch.Tensor, index: torch.Tensor, dim_size: int) -> torch.Tensor:
     """Sum ``src`` rows into ``dim_size`` bins specified by ``index`` (1-D)."""
     out = src.new_zeros((dim_size,) + src.shape[1:])
-    if src.ndim == 1:
-        return out.scatter_add_(0, index, src)
-    idx = index.view(-1, *([1] * (src.ndim - 1))).expand_as(src)
-    return out.scatter_add_(0, idx, src)
+    return out.index_add_(0, index, src)
+
+
+def _segment_sum_batched(src: torch.Tensor, index: torch.Tensor, dim_size: int) -> torch.Tensor:
+    """(B, E, D) → (B, dim_size, D) sum over edges grouped by ``index``."""
+    out = src.new_zeros((src.shape[0], dim_size) + src.shape[2:])
+    return out.index_add_(1, index, src)
 
 
 def _resolve_activation(activation: Activation) -> Callable[[torch.Tensor], torch.Tensor]:
@@ -40,12 +52,21 @@ def _resolve_activation(activation: Activation) -> Callable[[torch.Tensor], torc
     raise ValueError(f"Unsupported activation {activation!r}")
 
 
-class MLP(nn.Module):
-    """Haiku-style MLP + optional LayerNorm (GraphCast processor MLPs).
+class _Activation(nn.Module):
+    def __init__(self, fn: Callable[[torch.Tensor], torch.Tensor]):
+        super().__init__()
+        self.fn = fn
 
-    Layout matches ``hk.nets.MLP(output_sizes=[hidden]*n_hidden + [out])`` then
-    ``hk.LayerNorm``: Linear → Act → … → Linear → (LayerNorm). Default
-    activation is **ReLU** (GraphCast JAX default), not SiLU.
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.fn(x)
+
+
+class MLP(nn.Module):
+    """Haiku-style MLP + optional LayerNorm (GraphCast MLPs).
+
+    Layout matches ``hk.nets.MLP(output_sizes=[hidden]*n_hidden + [out])``
+    followed by ``hk.LayerNorm``: Linear → Act → … → Linear → (LayerNorm).
+    Default activation is **SiLU** (GraphCast ``activation="swish"``).
     """
 
     def __init__(
@@ -55,7 +76,7 @@ class MLP(nn.Module):
         hidden_dim: int,
         n_hidden: int = 1,
         layer_norm: bool = True,
-        activation: Activation = "relu",
+        activation: Activation = DEFAULT_ACTIVATION,
     ):
         super().__init__()
         if n_hidden < 0:
@@ -74,23 +95,26 @@ class MLP(nn.Module):
         return self.norm(self.net(x))
 
 
-class _Activation(nn.Module):
-    def __init__(self, fn: Callable[[torch.Tensor], torch.Tensor]):
-        super().__init__()
-        self.fn = fn
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.fn(x)
+def _as_batched(*xs: torch.Tensor):
+    batched = xs[0].ndim == 3
+    if batched:
+        return True, xs
+    return False, tuple(x.unsqueeze(0) for x in xs)
 
 
 class GraphNetBlock(nn.Module):
     """One InteractionNetwork step on a homogeneous directed edge set.
 
     Edge update:  Δe = MLP([e, v_src, v_dst]);   e ← e + Δe
-    Node update:  Δv = MLP([v, agg(Δe_in)]);     v ← v + Δv
+    Node update:  Δv = MLP([v, Σ_in m]);         v ← v + Δv
 
-    Aggregation uses **edge deltas** (not residual-summed edges), matching
-    jraph InteractionNetwork + DeepMind residual outside the MLP.
+    ``aggregate`` selects the per-edge message ``m`` that is summed:
+
+    * ``"delta"`` (default, DeepMind GraphCast / jraph): ``m = Δe``.
+    * ``"updated"``: ``m = e + Δe`` (the residual-summed edge latent). This is
+      what NVIDIA PhysicsNeMo's ``MeshNodeBlock`` does inside the GraphCast
+      processor; it exists only to pin down that known difference in the
+      parity tests and is not the canonical path.
     """
 
     def __init__(
@@ -98,16 +122,16 @@ class GraphNetBlock(nn.Module):
         latent_dim: int,
         hidden_dim: Optional[int] = None,
         n_hidden: int = 1,
-        activation: Activation = "relu",
+        activation: Activation = DEFAULT_ACTIVATION,
+        aggregate: str = "delta",
     ):
         super().__init__()
+        if aggregate not in ("delta", "updated"):
+            raise ValueError(f"aggregate must be 'delta' or 'updated', got {aggregate!r}")
         h = hidden_dim or latent_dim
-        self.edge_mlp = MLP(
-            3 * latent_dim, latent_dim, h, n_hidden=n_hidden, activation=activation
-        )
-        self.node_mlp = MLP(
-            2 * latent_dim, latent_dim, h, n_hidden=n_hidden, activation=activation
-        )
+        self.aggregate = aggregate
+        self.edge_mlp = MLP(3 * latent_dim, latent_dim, h, n_hidden=n_hidden, activation=activation)
+        self.node_mlp = MLP(2 * latent_dim, latent_dim, h, n_hidden=n_hidden, activation=activation)
 
     def forward(
         self,
@@ -116,46 +140,33 @@ class GraphNetBlock(nn.Module):
         senders: torch.Tensor,
         receivers: torch.Tensor,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
-        """
-        Parameters
-        ----------
-        nodes : (N, D) or (B, N, D)
-        edges : (E, D) or (B, E, D)
-        senders / receivers : (E,) long
-        """
-        batched = nodes.ndim == 3
+        """nodes (N, D) | (B, N, D); edges (E, D) | (B, E, D); senders/receivers (E,)."""
+        batched, (nodes, edges) = _as_batched(nodes, edges)
+        N = nodes.shape[1]
+        edge_delta = self.edge_mlp(torch.cat([edges, nodes[:, senders], nodes[:, receivers]], dim=-1))
+        new_edges = edges + edge_delta
+        msg = edge_delta if self.aggregate == "delta" else new_edges
+        agg = _segment_sum_batched(msg, receivers, N)
+        nodes = nodes + self.node_mlp(torch.cat([nodes, agg], dim=-1))
         if not batched:
-            nodes = nodes.unsqueeze(0)
-            edges = edges.unsqueeze(0)
-        B, N, D = nodes.shape
-        E = edges.shape[1]
-
-        v_src = nodes[:, senders]  # (B, E, D)
-        v_dst = nodes[:, receivers]
-        e_in = torch.cat([edges, v_src, v_dst], dim=-1)
-        edge_delta = self.edge_mlp(e_in.reshape(B * E, -1)).reshape(B, E, D)
-
-        # Aggregate incoming *deltas* per node (JAX InteractionNetwork order)
-        agg = edge_delta.new_zeros(B, N, D)
-        for b in range(B):
-            agg[b] = scatter_sum(edge_delta[b], receivers, N)
-        n_in = torch.cat([nodes, agg], dim=-1)
-        node_delta = self.node_mlp(n_in.reshape(B * N, -1)).reshape(B, N, D)
-
-        nodes = nodes + node_delta
-        edges = edges + edge_delta
-
-        if not batched:
-            return nodes.squeeze(0), edges.squeeze(0)
-        return nodes, edges
+            return nodes.squeeze(0), new_edges.squeeze(0)
+        return nodes, new_edges
 
 
 class BipartiteGraphNetBlock(nn.Module):
-    """One message-passing step from src nodes → dst nodes (bipartite).
+    """One message-passing step on a bipartite src → dst edge set.
 
-    Updates edges and **destination** nodes; optionally also updates source
-    nodes (Grid2Mesh keeps both latents in the paper). Aggregation uses edge
-    deltas before residual, same as ``GraphNetBlock``.
+    Matches one GraphCast ``DeepTypedGraphNet`` step on the grid2mesh /
+    mesh2grid graphs::
+
+        Δe   = MLP_e([e, src[s], dst[r]]);   e   ← e + Δe
+        dst  ← dst + MLP_dst([dst, Σ_r Δe])
+        src  ← src + MLP_src(src)            # only if update_src
+
+    Source nodes receive no edges, so their update has no aggregation term
+    (GraphCast Grid2Mesh updates grid nodes this way). In Mesh2Grid GraphCast
+    also evaluates a mesh-node MLP but discards its output, so
+    ``update_src=False`` is exactly equivalent there.
     """
 
     def __init__(
@@ -164,19 +175,15 @@ class BipartiteGraphNetBlock(nn.Module):
         hidden_dim: Optional[int] = None,
         n_hidden: int = 1,
         update_src: bool = True,
-        activation: Activation = "relu",
+        activation: Activation = DEFAULT_ACTIVATION,
     ):
         super().__init__()
         h = hidden_dim or latent_dim
         self.update_src = update_src
-        self.edge_mlp = MLP(
-            3 * latent_dim, latent_dim, h, n_hidden=n_hidden, activation=activation
-        )
-        self.dst_mlp = MLP(
-            2 * latent_dim, latent_dim, h, n_hidden=n_hidden, activation=activation
-        )
+        self.edge_mlp = MLP(3 * latent_dim, latent_dim, h, n_hidden=n_hidden, activation=activation)
+        self.dst_mlp = MLP(2 * latent_dim, latent_dim, h, n_hidden=n_hidden, activation=activation)
         self.src_mlp = (
-            MLP(2 * latent_dim, latent_dim, h, n_hidden=n_hidden, activation=activation)
+            MLP(latent_dim, latent_dim, h, n_hidden=n_hidden, activation=activation)
             if update_src
             else None
         )
@@ -189,39 +196,16 @@ class BipartiteGraphNetBlock(nn.Module):
         senders: torch.Tensor,
         receivers: torch.Tensor,
     ):
-        batched = src_nodes.ndim == 3
-        if not batched:
-            src_nodes = src_nodes.unsqueeze(0)
-            dst_nodes = dst_nodes.unsqueeze(0)
-            edges = edges.unsqueeze(0)
-        B = src_nodes.shape[0]
-        Ns, D = src_nodes.shape[1], src_nodes.shape[2]
+        batched, (src_nodes, dst_nodes, edges) = _as_batched(src_nodes, dst_nodes, edges)
         Nd = dst_nodes.shape[1]
-        E = edges.shape[1]
-
-        v_src = src_nodes[:, senders]
-        v_dst = dst_nodes[:, receivers]
         edge_delta = self.edge_mlp(
-            torch.cat([edges, v_src, v_dst], dim=-1).reshape(B * E, -1)
-        ).reshape(B, E, D)
-
-        agg_dst = edge_delta.new_zeros(B, Nd, D)
-        for b in range(B):
-            agg_dst[b] = scatter_sum(edge_delta[b], receivers, Nd)
-        dst_nodes = dst_nodes + self.dst_mlp(
-            torch.cat([dst_nodes, agg_dst], dim=-1).reshape(B * Nd, -1)
-        ).reshape(B, Nd, D)
-
+            torch.cat([edges, src_nodes[:, senders], dst_nodes[:, receivers]], dim=-1)
+        )
+        agg = _segment_sum_batched(edge_delta, receivers, Nd)
+        dst_nodes = dst_nodes + self.dst_mlp(torch.cat([dst_nodes, agg], dim=-1))
         if self.src_mlp is not None:
-            agg_src = edge_delta.new_zeros(B, Ns, D)
-            for b in range(B):
-                agg_src[b] = scatter_sum(edge_delta[b], senders, Ns)
-            src_nodes = src_nodes + self.src_mlp(
-                torch.cat([src_nodes, agg_src], dim=-1).reshape(B * Ns, -1)
-            ).reshape(B, Ns, D)
-
+            src_nodes = src_nodes + self.src_mlp(src_nodes)
         edges = edges + edge_delta
-
         if not batched:
             return src_nodes.squeeze(0), dst_nodes.squeeze(0), edges.squeeze(0)
         return src_nodes, dst_nodes, edges

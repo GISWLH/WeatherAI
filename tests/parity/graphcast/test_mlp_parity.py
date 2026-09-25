@@ -18,9 +18,20 @@ from ._helpers import (
 )
 
 
+# GraphCast uses activation="swish" (SiLU) for all its MLPs; ReLU is kept as a
+# variant (the previous revision wrongly defaulted to ReLU).
+ACTS = {"swish": ("silu", "silu"), "relu": ("relu", "relu")}
+
+
+def test_mlp_default_activation_is_silu():
+    mlp = MLP(4, 4, 4)
+    assert mlp.net[1].fn is torch.nn.functional.silu
+
+
 @requires_jax_parity
+@pytest.mark.parametrize("act", sorted(ACTS))
 @pytest.mark.parametrize("batch,in_dim,hidden,out_dim", [(4, 10, 16, 8), (2, 24, 8, 8)])
-def test_mlp_relu_layernorm_matches_haiku(batch, in_dim, hidden, out_dim):
+def test_mlp_layernorm_matches_haiku(batch, in_dim, hidden, out_dim, act):
     import jax
     import jax.numpy as jnp
     import haiku as hk
@@ -28,7 +39,7 @@ def test_mlp_relu_layernorm_matches_haiku(batch, in_dim, hidden, out_dim):
     def make_fn(x):
         y = hk.nets.MLP(
             output_sizes=[hidden, out_dim],
-            activation=jax.nn.relu,
+            activation={"swish": jax.nn.swish, "relu": jax.nn.relu}[act],
             name="parity_mlp",
         )(x)
         return hk.LayerNorm(axis=-1, create_scale=True, create_offset=True, name="parity_ln")(y)
@@ -40,7 +51,7 @@ def test_mlp_relu_layernorm_matches_haiku(batch, in_dim, hidden, out_dim):
     y_jax = np.asarray(net.apply(params, jnp.asarray(x_np)))
 
     flat = flatten_haiku_params(params)
-    torch_mlp = MLP(in_dim, out_dim, hidden, n_hidden=1, layer_norm=True, activation="relu")
+    torch_mlp = MLP(in_dim, out_dim, hidden, n_hidden=1, layer_norm=True, activation=ACTS[act][0])
     load_haiku_mlp_into_torch(torch_mlp, flat, "parity_mlp", "parity_ln")
     y_t = torch_mlp(torch.from_numpy(x_np)).detach().numpy()
 
