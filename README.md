@@ -229,7 +229,7 @@ pytest tests/models/fengwu tests/models/graphcast -q
 
 ### Planned models / 计划加入的模型
 
-Planned additions (**not implemented yet**; no code, weights, or parity claims in this
+Planned additions (**not implemented yet** — each is blocked on unavailable official model code/weights, see the roadmap checklist below; no code, weights, or parity claims in this
 repo for any of them). Citations were checked against Crossref / the publisher pages;
 "code" links point to the authors' official releases, which this repo does not vendor.
 
@@ -253,14 +253,14 @@ Notes / 备注:
 
 Roadmap checklist:
 
-- [ ] NowcastNet (precipitation nowcasting)
+- [ ] NowcastNet (precipitation nowcasting) — **blocked**: the only official source is the Code Ocean capsule (codeocean.com/capsule/3935105), which returns HTTP 403 without a login; no official GitHub; not started
 - [x] NeuralGCM (hybrid dynamical core + ML) — wrapper over official JAX package; CPU-tested (see above)
 - [x] GenCast (diffusion-based ensemble forecasting) — lite PyTorch re-implementation; sampler verified vs official JAX, no official weights (see above)
 - [x] Aurora (Earth-system foundation model) — wrapper over official package; smoke-tested incl. official small checkpoint (see above)
 - [~] Aardvark Weather — **partial**: processor ViT only (official checkpoint loads, matches official code); encoder/decoder (observations → forecast) not implemented
 - [x] WeatherNext Cyclones / WN-C (tropical cyclone ensembles) — wrapper over official JAX package (Mini checkpoint, CPU-tested; tracker not wrapped)
-- [ ] FuXi-ENS (ensemble forecasting)
-- [ ] FuXi-DA (satellite data assimilation)
+- [ ] FuXi-ENS (ensemble forecasting) — **blocked**: official repo has inference scripts only; model (`fuxi_ens.onnx`) and sample data are on a restricted Google Drive (request from the authors); no PyTorch definition published
+- [ ] FuXi-DA (satellite data assimilation) — **blocked**: `model/assimilation_v6.py` and `final_cast_10_assim_model.pth` + test data are not in the repo and not linked anywhere (open upstream issue xuxiaoze/FuXi-DA#2 asks for them, unanswered); only the inference driver is public, so the architecture cannot be reproduced or verified
 
 ## Disclaimer
 

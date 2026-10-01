@@ -105,3 +105,11 @@ forecast-skill claim. GPU runs: Hugging Face Space
 * Results: CPU (box 8 cores, 15 GB): 6 tests passed in ~2 min (JAX compile dominated), 12 s per jitted forward after compile.
   **HF GPU Space: not run** — the shared Space is Python 3.10 and pinned to a different JAX stack, ZeroGPU (10/10 Spaces already used) would
   only provide JAX's CPU backend anyway unless jax[cuda] is set up, and the 3.12 weathernext install was not validated there.
+
+## Blocked (not started; nothing faked)
+
+| Model | Blocking point (checked 2026-10-01) |
+|---|---|
+| **NowcastNet** | Only official source is Code Ocean capsule `10.24433/CO.0832447.v1` → `codeocean.com/capsule/3935105/tree/v1`; HTTP 403 for anonymous access (also for `/download`); needs a Code Ocean login (not available to the box). No official GitHub; community re-implementations exist but are not official and were not used. |
+| **FuXi-ENS** | `tpys/FuXi-ENS` contains `inference.py`/`eval.py`/`data_util.py` that call an ONNX Runtime session on `model/fuxi_ens.onnx`; the model and sample data are on a restricted Google Drive (README: contact the authors). No PyTorch architecture is published, so there is nothing official to wrap or compare a re-implementation against. |
+| **FuXi-DA** | `xuxiaoze/FuXi-DA` contains only the inference driver (`inference.py`, `read_data.py`, `result_plot.py`). It imports `assimilation_v6.AssimilationNetv6` and loads `final_cast_10_assim_model.pth` + `test_data/`, none of which are in the repo or linked (README only shows the expected directory tree; upstream issue #2 "Where can I get `model` and `test_data` dir?" is open with no reply). Only constructor hyper-parameters are visible (`bg_chans=70, embed_dim=256, obs_chans=15, obs_frames=8, depth=(1,1,1), obs_rect=(40,680,210,850)`), not the network. |
