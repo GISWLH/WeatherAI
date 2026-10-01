@@ -115,7 +115,41 @@ def smoke_gencast(device: str) -> dict:
     }
 
 
-SMOKES = {"gencast": smoke_gencast, "neuralgcm": smoke_neuralgcm, "aurora": smoke_aurora, "graphcast": smoke_graphcast}
+def smoke_aardvark(device: str, pretrained: bool = False) -> dict:
+    import os
+
+    import numpy as np
+
+    from weatherai.models import AardvarkProcessor_lite
+
+    checks = {}
+    m = AardvarkProcessor_lite().to(device)
+    y = m(torch.randn(2, 35, 60, 31, device=device))
+    y.pow(2).mean().backward()
+    checks["lite_shape_ok"] = tuple(y.shape) == (2, 31, 60, 24)
+    checks["lite_finite"] = bool(torch.isfinite(y).all())
+    checks["lite_backward_finite"] = all(torch.isfinite(p.grad).all() for p in m.parameters() if p.grad is not None)
+    if pretrained:  # official processor checkpoint (HF dataset av555/aardvark-weather, 648 MB) vs. official-code reference
+        from huggingface_hub import hf_hub_download
+
+        from weatherai.models.aardvark import load_official_processor
+
+        ck = hf_hub_download("av555/aardvark-weather", "trained_model/processor/forecast_1/epoch_0", repo_type="dataset")
+        ref = np.load(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "tests/models/aardvark/data/processor_ref.npz"))
+        full = load_official_processor(ck, strict=True, device=device).eval()
+        checks["official_ckpt_strict_load"] = True
+        g = torch.Generator().manual_seed(0)
+        x = torch.randn(1, 35, 240, 121, generator=g).to(device)
+        with torch.no_grad():
+            out = {lt: full(x, torch.full((1, 1), float(lt), device=device))[:, ::6, ::6].float().cpu().numpy() for lt in (0, 1)}
+        for lt in (0, 1):
+            err = float(np.abs(out[lt] - ref[f"y_lt{lt}"]).max())
+            checks[f"max_abs_err_vs_official_lt{lt}"] = err
+            checks[f"matches_official_lt{lt}"] = bool(err < 1e-3)
+    return checks
+
+
+SMOKES = {"aardvark": smoke_aardvark, "gencast": smoke_gencast, "neuralgcm": smoke_neuralgcm, "aurora": smoke_aurora, "graphcast": smoke_graphcast}
 
 
 def run(name: str, device: str, **kw) -> dict:
@@ -142,5 +176,5 @@ if __name__ == "__main__":
     ap.add_argument("--device", default="cpu")
     ap.add_argument("--pretrained", action="store_true")
     a = ap.parse_args()
-    kw = {"pretrained": a.pretrained} if a.model == "aurora" else {}
+    kw = {"pretrained": a.pretrained} if a.model in ("aurora", "aardvark") else {}
     print(json.dumps(run(a.model, a.device, **kw)))

@@ -1,6 +1,7 @@
 numpy
 timm
 einops
+huggingface_hub
 scipy
 pytest
 microsoft-aurora

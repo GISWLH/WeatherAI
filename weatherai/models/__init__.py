@@ -5,6 +5,7 @@ from .fuxi.fuxi import Fuxi
 from .fengwu.fengwu import FengWu, FengWu_lite
 from .graphcast.graphcast import GraphCast, GraphCast_lite
 from .aurora.aurora import Aurora_lite, Aurora_small, AuroraWrapper
+from .aardvark.aardvark import AardvarkProcessor, AardvarkProcessor_lite
 from .gencast.gencast import GenCast, GenCast_lite
 from .neuralgcm.neuralgcm import NeuralGCM_lite, NeuralGCMWrapper
 
@@ -27,4 +28,6 @@ __all__ = [
     "NeuralGCM_lite",
     "GenCast",
     "GenCast_lite",
+    "AardvarkProcessor",
+    "AardvarkProcessor_lite",
 ]

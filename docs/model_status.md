@@ -68,3 +68,21 @@ forecast-skill claim. GPU runs: Hugging Face Space
   noise (lite uses iid Gaussian); ERA5 normalisation/forcing pipeline; any forecast skill.
 * Results: CPU: 10 passed (3.8 s); HF ZeroGPU (RTX PRO 6000 Blackwell MIG 2g.48gb): smoke PASS 2.0 s, peak 74 MB, Space unit
   tests 10 passed. Lite model = 0.059 M parameters.
+
+## Aardvark Weather — `weatherai.models.aardvark` — **partial: processor module only (PyTorch re-implementation, official checkpoint loads, numerically checked)**
+
+* Source: <https://github.com/anna-allen/aardvark-weather-public> (CC0) at commit 8fb35a0; weights/data in the public HF *dataset*
+  repo `av555/aardvark-weather` (`trained_model/`; data licence CC-BY-NC-ND-style non-commercial, no derivatives — see the repo FAQ).
+  Official model = encoder (set-conv + ViT assimilation of raw satellite/in-situ obs) → processor (ViT, 24 h step on a 1.5° 240×121 grid,
+  24 channels) → decoder (set-conv + MLP, station forecasts).
+* **Implemented here: the processor ViT only** (`AardvarkProcessor`, parameter names identical to the official `decoder_lr.*`,
+  53.9 M params), plus the official un/normalisation step (`forecast_step`). **Not implemented:** observation encoder, station
+  decoder, end-to-end finetune, data loaders — they need the multi-terabyte observation pipeline (sample data in the repo is a CUDA-pickled
+  dict only). So *this is not the end-to-end Aardvark system* and cannot go from observations to a forecast.
+* Verified: official `processor/forecast_1/epoch_0` (648 MB) loads with `strict=True`; output matches the official
+  `ConvCNPWeather(mode="forecast", decoder="vit")` + same checkpoint on seeded random input at lead_time 0 and 1
+  (max |Δ| ≈ 2e-4 on outputs of mean |y| ≈ 0.17, CPU and GPU; reference arrays from `scripts/aardvark_processor_reference.py`, which needs a
+  one-kwarg timm shim for the official `vit.py`). Lite model (0.23 M params, 60×31 grid) fwd/bwd finite.
+* Not verified: forecast skill on real ERA5-like/Aardvark-assimilated states, multi-step use, other lead-time checkpoints (`forecast_2..10`).
+* Results: CPU: 7 tests passed (4.7 s); HF ZeroGPU (RTX PRO 6000 Blackwell MIG 2g.48gb): smoke with official checkpoint PASS 6.6 s,
+  peak 696 MB, Space unit tests 5 passed / 2 skipped (official-checkpoint tests need `AARDVARK_PROC_CKPT`).

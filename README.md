@@ -22,6 +22,7 @@
 | **GraphCast** / `GraphCast_lite` | `from weatherai.models import GraphCast, GraphCast_lite` | Grid ↔ icosahedral mesh encode–process–decode |
 | **NeuralGCM** (wrapper, JAX) | `from weatherai.models import NeuralGCM_lite, NeuralGCMWrapper` | Thin inference wrapper over the official JAX `neuralgcm` package (not a PyTorch port) — see [NeuralGCM](#neuralgcm--wrapper-around-the-official-jax-package) |
 | **GenCast_lite** (re-implementation) | `from weatherai.models import GenCast, GenCast_lite` | PyTorch EDM diffusion + DPM-Solver++ 2S sampler (verified vs official JAX) with a small random-init denoiser; no official weights — see [GenCast](#gencast_lite--pytorch-re-implementation-diffusion-sampler-verified-vs-official-jax) |
+| **Aardvark** (processor only) | `from weatherai.models import AardvarkProcessor, AardvarkProcessor_lite` | PyTorch re-implementation of the **forecast ViT module only** (official checkpoint loads and matches official code) — *not* the end-to-end observation→forecast system; see [Aardvark](#aardvark-weather--processor-module-only) |
 | **Aurora** (wrapper) | `from weatherai.models import Aurora_lite, Aurora_small` | Thin wrapper over the official `microsoft-aurora` PyTorch package — see [Aurora](#aurora--wrapper-around-the-official-package) |
 
 Architecture notes:
@@ -99,6 +100,28 @@ numerically (rtol 2e-4, closed-form toy denoiser, fixed noise; `scripts/gencast_
 backward finite; ensemble members differ; 40-step overfit sanity check. **Not verified:** the denoiser network is *not* the
 official architecture and cannot load official weights; noise is iid Gaussian (official: spherical-harmonic white noise);
 no ERA5 pipeline; no skill. Details: [docs/model_status.md](docs/model_status.md).
+
+## Aardvark Weather — processor module only
+
+Aardvark Weather (Allen et al., *Nature* 2025) = observation **encoder** → **processor** → station **decoder**.
+`weatherai.models.aardvark` re-implements **only the processor ViT** (24 h step, 24-channel 1.5° state on a 240×121 grid).
+The encoder (raw satellite/in-situ assimilation) and decoder are **not** implemented, so this is *not* the end-to-end model.
+
+```python
+import torch
+from weatherai.models import AardvarkProcessor_lite
+from weatherai.models.aardvark import load_official_processor
+
+m = AardvarkProcessor_lite().eval()                    # 0.23 M params, random init, 60x31 grid
+y = m(torch.randn(1, 35, 60, 31))                      # (1, 31, 60, 24): normalised 24 h tendency (24 vars)
+
+# Official processor weights (HF dataset av555/aardvark-weather, trained_model/processor/forecast_1/epoch_0, 648 MB):
+full = load_official_processor("forecast_1/epoch_0")   # strict=True load; 53.9 M params
+```
+
+**Status — verified:** official checkpoint strict-loads; output matches the official `ConvCNPWeather(forecast, vit)` on seeded
+random input (max |Δ| ≈ 2e-4, CPU + HF GPU). **Not verified / missing:** encoder, decoder, data pipeline, forecast skill, lead times >24 h.
+Details: [docs/model_status.md](docs/model_status.md).
 
 ## Install / 安装
 
@@ -195,7 +218,6 @@ Crossref / 出版社页面核实；“Code”为作者官方发布的仓库，�
 | Model | Paper (journal, year) | Official code / weights |
 |-------|-----------------------|-------------------------|
 | **NowcastNet** | Zhang et al., [Skilful nowcasting of extreme precipitation with NowcastNet](https://doi.org/10.1038/s41586-023-06184-4) — *Nature* 619, 2023 | [Code Ocean capsule](https://doi.org/10.24433/CO.0832447.v1) (code + pretrained weights, per the paper) |
-| **Aardvark Weather** | Allen et al., [End-to-end data-driven weather prediction](https://doi.org/10.1038/s41586-025-08897-0) — *Nature* 641, 2025 | [anna-allen/aardvark-weather-public](https://github.com/anna-allen/aardvark-weather-public) (the repo URL given in the paper, `annavaughan/...`, now redirects here) |
 | **WeatherNext Cyclones (WN-C)** | Alet et al., [Operational tropical cyclone forecasting with AI](https://doi.org/10.1038/s41586-026-10953-2) — *Nature* 657, 2026 | [google-deepmind/weathernext](https://github.com/google-deepmind/weathernext) (Apache-2.0; code + weights) |
 | **FuXi-ENS** | Zhong et al., [FuXi-ENS: A machine learning model for efficient and accurate ensemble weather prediction](https://doi.org/10.1126/sciadv.adu2854) — *Science Advances* 11, 2025 ⚠️ **not a Nature-family journal** | [tpys/FuXi-ENS](https://github.com/tpys/FuXi-ENS) (model files on a Google Drive; access limited, request from the authors) |
 | **FuXi-DA** | Xu et al., [FuXi-DA: a generalized deep learning data assimilation framework for assimilating satellite observations](https://doi.org/10.1038/s41612-025-01039-3) — *npj Climate and Atmospheric Science* 8, 2025 (Nature Portfolio) | [xuxiaoze/FuXi-DA](https://github.com/xuxiaoze/FuXi-DA) (inference example + checkpoint) |
@@ -215,7 +237,7 @@ Roadmap checklist:
 - [x] NeuralGCM (hybrid dynamical core + ML) — wrapper over official JAX package; CPU-tested (see above)
 - [x] GenCast (diffusion-based ensemble forecasting) — lite PyTorch re-implementation; sampler verified vs official JAX, no official weights (see above)
 - [x] Aurora (Earth-system foundation model) — wrapper over official package; smoke-tested incl. official small checkpoint (see above)
-- [ ] Aardvark Weather (end-to-end, observations → forecast)
+- [~] Aardvark Weather — **partial**: processor ViT only (official checkpoint loads, matches official code); encoder/decoder (observations → forecast) not implemented
 - [ ] WeatherNext Cyclones / WN-C (tropical cyclone ensembles)
 - [ ] FuXi-ENS (ensemble forecasting)
 - [ ] FuXi-DA (satellite data assimilation)
