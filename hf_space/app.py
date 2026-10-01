@@ -6,6 +6,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 import traceback
 
 # JAX/XLA on the ZeroGPU Blackwell slice: the GEMM autotuner aborts the process on the dycore's HIGHEST-precision
@@ -19,14 +20,14 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 PKG = os.path.join(ROOT, "WeatherAI")
 sys.path.insert(0, PKG)
 
-MODELS = ["graphcast", "aurora", "neuralgcm", "gencast", "aardvark", "weathernext_cyclones", "neuralgcm_train"]  # extended as models are added
+MODELS = ["graphcast", "aurora", "neuralgcm", "gencast", "aardvark", "weathernext_cyclones", "neuralgcm_train", "fuxi_ens"]  # extended as models are added
 
 
 def _smoke(model: str, pretrained: bool) -> str:
     from scripts.gpu_smoke import run
 
     dev = "cuda" if torch.cuda.is_available() else "cpu"
-    kw = {"pretrained": pretrained} if model in ("aurora", "aardvark", "gencast", "weathernext_cyclones", "neuralgcm") else {}
+    kw = {"pretrained": pretrained} if model in ("aurora", "aardvark", "gencast", "weathernext_cyclones", "neuralgcm", "fuxi_ens") else {}
     return json.dumps(run(model, dev, **kw), indent=2)
 
 
@@ -42,9 +43,47 @@ def smoke_cpu(model: str, pretrained: bool = False) -> str:
     try:
         from scripts.gpu_smoke import run
 
-        return json.dumps(run(model, "cpu", **({"pretrained": pretrained} if model in ("aurora", "aardvark", "gencast", "weathernext_cyclones", "neuralgcm") else {})), indent=2)
+        return json.dumps(run(model, "cpu", **({"pretrained": pretrained} if model in ("aurora", "aardvark", "gencast", "weathernext_cyclones", "neuralgcm", "fuxi_ens") else {})), indent=2)
     except Exception:
         return "STATUS=FAIL\n" + traceback.format_exc()
+
+
+_FETCH = {"state": "idle", "log": []}
+
+
+def fetch_fuxi_ens(background: bool = True) -> str:
+    """Download FuXi-ENS (Zenodo 10.5281/zenodo.15124541, CC-BY-NC-4.0) to $FUXI_ENS_CKPT (default /tmp/fuxi_ens).
+
+    Runs on the Space CPU in a background thread (10 GB, outside the 120 s ZeroGPU window); call again to poll."""
+    import threading
+
+    out = os.environ.get("FUXI_ENS_CKPT", "/tmp/fuxi_ens")
+    if _FETCH["state"] == "idle":
+        def work():
+            try:
+                from scripts.fetch_fuxi_ens import fetch
+
+                _FETCH["state"] = "running"
+                fetch(out, log=lambda m: _FETCH["log"].append(m))
+                _FETCH["state"] = "loading"       # strict-load into CPU RAM now, so the 120 s GPU call only has to move it
+                from scripts.gpu_smoke import preload_fuxi_ens
+
+                _FETCH["log"].append(f"preloaded: {preload_fuxi_ens(out)}")
+                _FETCH["state"] = "done"
+            except Exception:
+                _FETCH["state"] = "error"
+                _FETCH["log"].append(traceback.format_exc()[-1500:])
+
+        _FETCH["state"] = "starting"
+        threading.Thread(target=work, daemon=True).start()
+    try:
+        files = {f: os.path.getsize(os.path.join(out, f)) for f in sorted(os.listdir(out))}
+    except FileNotFoundError:
+        files = {}
+    import shutil
+
+    free = round(shutil.disk_usage(out if os.path.exists(out) else "/tmp").free / 2**30, 1)
+    return json.dumps({"state": _FETCH["state"], "dir": out, "files": files, "free_disk_GiB": free, "log": _FETCH["log"][-6:]}, indent=1)
 
 
 def unit_tests(model: str) -> str:
@@ -66,6 +105,8 @@ with gr.Blocks(title="WeatherAI models smoke") as demo:
     out = gr.Textbox(label="Result", lines=24)
     b_gpu.click(smoke_gpu, [model, pre], out, api_name="smoke_gpu")
     b_cpu.click(smoke_cpu, [model, pre], out, api_name="smoke_cpu")
+    b_fetch = gr.Button("FuXi-ENS: download / poll weights (CPU, Zenodo)")
+    b_fetch.click(fetch_fuxi_ens, [], out, api_name="fetch_fuxi_ens")
     b_ut.click(unit_tests, [model], out, api_name="unit_tests")
 
 if __name__ == "__main__":

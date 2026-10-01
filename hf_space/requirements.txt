@@ -15,3 +15,6 @@ neuralgcm
 git+https://github.com/neuralgcm/dinosaur.git
 trimesh
 rtree
+remotezip
+onnx
+netcdf4

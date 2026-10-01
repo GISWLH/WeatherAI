@@ -418,7 +418,117 @@ def smoke_weathernext_cyclones(device: str, pretrained: bool = False) -> dict:
     return checks
 
 
-SMOKES = {"neuralgcm_train": smoke_neuralgcm_train, "weathernext_cyclones": smoke_weathernext_cyclones, "aardvark": smoke_aardvark, "gencast": smoke_gencast, "neuralgcm": smoke_neuralgcm, "aurora": smoke_aurora, "graphcast": smoke_graphcast}
+_FUXI_CPU = {}
+
+
+def preload_fuxi_ens(ck: str) -> dict:
+    """Strict-load the official checkpoint into CPU RAM (outside the 120 s ZeroGPU window) and keep it for ``smoke_fuxi_ens``."""
+    import time
+
+    from weatherai.models.fuxi_ens import load_official
+
+    t0 = time.time()
+    _FUXI_CPU["model"] = load_official(f"{ck}/fuxi_ens.onnx", data_dir=ck, device="cpu", materialize=True)
+    return {"cpu_load_seconds": round(time.time() - t0, 1)}
+
+
+def smoke_fuxi_ens(device: str, pretrained: bool = False) -> dict:
+    """FuXi-ENS native PyTorch port.
+
+    Always: lite config forward + one training step on ``device``.
+    With ``pretrained``: the official 2.49 B-param checkpoint (downloaded beforehand by the Space's ``fetch_fuxi_ens``
+    endpoint to $FUXI_ENS_CKPT, default /tmp/fuxi_ens) is strict-loaded to ``device``, run on the official input.nc with the
+    same fixed noise as the onnxruntime reference (torch CPU generator, seed 1234) and compared with the committed
+    stride-12 slice of the onnxruntime output (``tests/models/fuxi_ens/data/onnx_final_t1_stride12.npz``)."""
+    import os
+
+    import numpy as np
+
+    from weatherai.models.fuxi_ens import FuXiENS_lite, FuXiENSNoise
+
+    res = {}
+    m = FuXiENS_lite().to(device)
+    cfg = m.cfg
+    x = torch.randn(1, 2, cfg.channels, *cfg.img_size, device=device)
+    t = torch.zeros(1, device=device)
+    noise = FuXiENSNoise.sample(cfg, 1, torch.Generator().manual_seed(0), device=device)
+    xn = m.normalise(x)
+    z, mean, _ = m.perturb(xn, t, t, t, noise)
+    loss = (m.decode(z, t, t, t) - xn[:, 1]).pow(2).mean() + 1e-3 * mean.pow(2).mean()
+    loss.backward()
+    res["lite_params"] = m.num_parameters()
+    res["lite_loss_finite"] = bool(torch.isfinite(loss))
+    res["lite_grads_finite"] = all(torch.isfinite(p.grad).all() for p in m.parameters() if p.grad is not None)
+    if not pretrained:
+        return res
+
+    import time
+
+    ck = os.environ.get("FUXI_ENS_CKPT", "/tmp/fuxi_ens")
+    if not (os.path.exists(f"{ck}/fuxi_ens") and os.path.exists(f"{ck}/input.nc")):
+        res["weights_present"] = False
+        res["error"] = f"weights not found in {ck}; call the Space's fetch_fuxi_ens endpoint first and wait for it to finish"
+        return res
+    import xarray as xr
+    import pandas as pd
+
+    from weatherai.models.fuxi_ens import load_official
+
+    t0 = time.time()
+    model = _FUXI_CPU.get("model")
+    res["preloaded_in_cpu_ram"] = model is not None
+    if model is None:
+        model = load_official(f"{ck}/fuxi_ens.onnx", data_dir=ck, device="cpu", materialize=True)
+    model = model.to(device)          # fp32 (2.47 B params = 9.9 GB); no fp16/bf16 needed on the 48 GB MIG slice
+    res["move_to_device_seconds"] = round(time.time() - t0, 1)
+    res["official_params"] = model.num_parameters()
+    res["official_params_match_onnx"] = model.num_parameters() == 2_474_861_958
+    ds = xr.open_dataset(f"{ck}/input.nc")
+    xin = torch.from_numpy(ds["fuxi_ens"].values[None].astype(np.float32)).to(device)
+    tt = pd.to_datetime(ds.time.values[-1])
+    step, hour, doy = (torch.tensor([v], dtype=torch.float32, device=device) for v in (0.0, tt.hour / 24, min(365, tt.day_of_year) / 365))
+    ref_npz = np.load(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "tests", "models", "fuxi_ens", "data", "onnx_final_t1_stride12.npz"))
+    g = torch.Generator().manual_seed(int(ref_npz["seed"]))
+    d0 = torch.rand(1, 16200, 1536, generator=g)
+    res["noise_rng_matches_reference_box"] = abs(float(d0.double().sum()) - float(ref_npz["rng_checksum"])) < 1e-6 * abs(float(ref_npz["rng_checksum"]))
+    d1 = torch.rand(1, 16200, 1536, generator=g)
+    eps = torch.randn(1, 156, 721, 1440, generator=g)
+    noise = FuXiENSNoise(d0.to(device), d1.to(device), eps.to(device))
+    ref = ref_npz["final_t1"]
+
+    def run(label):
+        torch.cuda.synchronize() if device.startswith("cuda") else None
+        t1 = time.time()
+        with torch.no_grad():
+            y = model(xin, step, hour, doy, noise)
+        torch.cuda.synchronize() if device.startswith("cuda") else None
+        sl = y[0, 1, :, ::12, ::12].float().cpu().numpy()
+        d = np.abs(sl - ref)
+        std = model.std.view(-1).cpu().numpy()[:, None, None]
+        res[f"{label}_seconds"] = round(time.time() - t1, 2)
+        res[f"{label}_max_abs_err_vs_onnxruntime_slice"] = float(d.max())
+        res[f"{label}_max_err_over_channel_std"] = float((d / std).max())
+        res[f"{label}_finite"] = bool(np.isfinite(sl).all())
+        res[f"{label}_t0_is_input_step1"] = bool(torch.equal(torch.nan_to_num(y[:, 0], nan=-7.0), torch.nan_to_num(xin[:, 1], nan=-7.0)))  # input has NaNs; torch.equal(nan, nan) is False
+        return y
+
+    if device.startswith("cuda"):
+        torch.backends.cuda.matmul.allow_tf32 = False
+        torch.backends.cudnn.allow_tf32 = False
+        res["peak_gpu_mem_after_load_MB"] = round(torch.cuda.max_memory_allocated() / 2**20, 1)
+    run("fp32")
+    res["fp32_matches_onnxruntime_atol_1e-2_of_std"] = res["fp32_max_err_over_channel_std"] < 1e-2
+    # a second member with different noise: ensemble spread is non-zero
+    g2 = torch.Generator().manual_seed(1)
+    noise2 = FuXiENSNoise.sample(model.cfg, 1, g2, device=device)
+    with torch.no_grad():
+        y2 = model(xin, step, hour, doy, noise2)
+    res["second_member_differs"] = bool((y2[0, 1, :, ::12, ::12].float().cpu().numpy() != ref).any())
+    del y2
+    return res
+
+
+SMOKES = {"fuxi_ens": smoke_fuxi_ens, "neuralgcm_train": smoke_neuralgcm_train, "weathernext_cyclones": smoke_weathernext_cyclones, "aardvark": smoke_aardvark, "gencast": smoke_gencast, "neuralgcm": smoke_neuralgcm, "aurora": smoke_aurora, "graphcast": smoke_graphcast}
 
 
 def run(name: str, device: str, **kw) -> dict:
@@ -445,5 +555,5 @@ if __name__ == "__main__":
     ap.add_argument("--device", default="cpu")
     ap.add_argument("--pretrained", action="store_true")
     a = ap.parse_args()
-    kw = {"pretrained": a.pretrained} if a.model in ("aurora", "aardvark", "gencast", "weathernext_cyclones", "neuralgcm") else {}
+    kw = {"pretrained": a.pretrained} if a.model in ("aurora", "aardvark", "gencast", "weathernext_cyclones", "neuralgcm", "fuxi_ens") else {}
     print(json.dumps(run(a.model, a.device, **kw)))

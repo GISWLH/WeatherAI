@@ -21,6 +21,7 @@
 | **FengWu** / `FengWu_lite` | `from weatherai.models import FengWu, FengWu_lite` | Multi-modal encode–fuse–decode; optional uncertainty |
 | **GraphCast** / `GraphCast_lite` | `from weatherai.models import GraphCast, GraphCast_lite` | Grid ↔ icosahedral mesh encode–process–decode |
 | **NeuralGCM** (partial native + JAX oracle + **JAX training/fine-tuning workflow**) | `from weatherai.models.neuralgcm import NeuralGCMLearnedComponents, convert_official_params, SphericalHarmonicsGrid` · `from weatherai.models import NeuralGCM_lite, NeuralGCMWrapper` · `from weatherai.models.neuralgcm import train` (configure / from-scratch / fine-tune, JAX, tested on HF GPU) | Native PyTorch port of the **learned components** (4 EPD towers, surface towers, vertical CNN, learned orography/positional features; all 14.5 M official weights strict-load and match official JAX) and of the **spherical-harmonic layer**; the **dynamical core and feature builders are NOT ported**, so forecasts still run through the official-JAX wrapper (kept as oracle) — see [NeuralGCM](#neuralgcm--native-learned-components--torch-spherical-harmonics-jax-wrapper-kept-as-oracle) |
+| **FuXi-ENS** (native, reverse-engineered from ONNX) | `from weatherai.models.fuxi_ens import FuXiENS, FuXiENS_lite, FuXiENSNoise, load_official` | Explicit PyTorch port of the official ONNX (8×8 patch embed, AdaLN shifted-window RoPE-attention blocks in `dist_p` (14) and `decoder.0` (42), explicit noise inputs); strict-loads the 2.47 B official weights (CC-BY-NC-4.0, not in git) and matches onnxruntime for one forward step with fixed noise (final output max|Δ|/max|ref| 8e-6 on CPU); 15-day ensemble not run — see [FuXi-ENS](#fuxi-ens--native-pytorch-reverse-engineered-from-the-official-onnx-numerically-checked-vs-onnxruntime) |
 | **GenCast** (native denoiser + sampler) | `from weatherai.models.gencast import GenCastDenoiser_from_official, GenCast_lite` | explicit PyTorch port of the official denoiser (grid2mesh GNN, k-hop mesh transformer, mesh2grid GNN); official Mini weights strict-load and match official JAX (network only) — see [GenCast](#gencast--native-pytorch-denoiser-official-architecture-official-mini-weights-load--edmdpm-solver-sampler) |
 | **Aardvark** (encoder + processor + station decoder) | `from weatherai.models.aardvark import AardvarkEncoder, AardvarkProcessor, AardvarkDecoder, AardvarkE2E` | Explicit PyTorch port of everything the official public code defines (set-conv observation encoder + ViT, forecast ViT, U-Net + set-conv + MLP station decoder); the three official checkpoints strict-load and the E2E output matches the official code on the official sample — see [Aardvark](#aardvark-weather--native-pytorch-encoder--processor--decoder) |
 | **WeatherNext Cyclones Mini** (native network + JAX oracle) | `from weatherai.models.weathernext_cyclones import WeatherNextCyclonesNet_from_official, WeatherNextCyclonesNative_lite` | Explicit PyTorch port of the official FGN network (noise-conditioned grid/mesh encoders, ball-query grid→mesh GNN, 16-layer k-hop mesh transformer, mesh→grid GNN, split decoder); official Mini weights strict-load and match official JAX; official-JAX wrapper kept as oracle; tracker/rollout/normalisation not ported — see [WN-C](#weathernext-cyclones-mini--native-pytorch-network-official-mini-weights-load-jax-wrapper-kept-as-oracle) |
@@ -182,6 +183,63 @@ What it took: the Space runs Python 3.10, so JAX is capped at 0.6.2, which has o
 dycore's `HIGHEST`-precision matmuls (`Algorithm not supported by the ElementalIrEmitter: ALG_DOT_BF16_BF16_F32`), fixed with
 `XLA_FLAGS=--xla_gpu_autotune_level=0` (set in `hf_space/app.py` before `import jax`). ZeroGPU exposes the GPU only inside `@spaces.GPU`
 calls (120 s limit), so only the small config was timed there; the full-size fine-tune was run on CPU only.
+
+## FuXi-ENS — native PyTorch (reverse-engineered from the official ONNX; numerically checked vs onnxruntime)
+
+FuXi-ENS (Zhong et al., *Sci. Adv.* 2025) is a latent-noise ensemble forecaster. The only official artefact is `fuxi_ens.onnx`
+(Zenodo [10.5281/zenodo.15124541](https://zenodo.org/records/15124541), **CC-BY-NC-4.0 — non-commercial; weights are never committed**:
+download with `python scripts/fetch_fuxi_ens.py --out /workspace/ckpt/fuxi_ens`, 9.9 GB). `weatherai/models/fuxi_ens/model.py` is an
+explicit PyTorch re-implementation whose structure, constants and parameter names were read out of the 26,018-node graph; **the official
+code has no PyTorch definition, so the ONNX graph itself is the oracle**.
+
+```
+input [B,2,78,721,1440] (2 steps x (5 vars x 13 levels + 13 surface))  --(x-mean)/std, NaN->0, accumulated channels 73-77 := 0-->  xn
+ dist_p  : PatchEmbed (Conv 8x8 on [state;static const] -> LN) -> dropout "drop0" -> layers.0 (7 AdaLN blocks) -> dropout "drop1"
+           -> layers.1 (7 blocks) -> final AdaLN (+patch-embed residual) -> ConvTranspose 8x8 heads: mean, logvar     (14 blocks)
+ sample  = mean + exp(logvar/2) * eps                                  <- the ensemble noise ("RandomNormalLike")
+ decoder.0: z = xn + sample (channels 73-77 := 0) -> PatchEmbed -> 6 layers x 7 AdaLN blocks -> final AdaLN (+residual)
+           -> pl_head (65 ch) || sf_head (13 ch)  -> x*std+mean ; tp = exp(clip(.,0,7)) - 1                          (42 blocks)
+output [B,2,78,721,1440] = concat(input[:, -1], new state)           (== the ONNX output; inference.py feeds it back as next input)
+```
+
+AdaLN block = `adaln = Linear(SiLU(cond))` -> `(shift, scale, gate)` x 2; `x += g1*Attn(LN(x)(1+s1)+b1)`, `x += g2*MLP(LN(x)(1+s2)+b2)`;
+`cond = MLP(sin/cos(step)) + MLP(hour/24) + MLP(doy/365)`. Attention: 24 heads x 64, 18x18 windows over the 90x180 token grid,
+odd blocks cyclic-shifted by 9 with the stored −100 mask, **1-D RoPE on the window-flattened index** (not 2-D), q and k scaled by d^-1/4;
+MLP is a gated GELU (`a*gelu(b)`, `fc1` 1536→8192 no bias); LayerNorm is the *unbiased-variance* form (eps 1e-6). All of this was recovered
+from the graph and then verified numerically (below). 2,474,861,958 parameters + buffers `mean/std [78,1,1]` and `const [6,721,1440]`
+(parameter count equals the ONNX weight elements exactly; the 22 `attn_mask` initialisers are derived by `make_shift_mask` and
+tested equal to the ONNX tensors).
+
+```python
+from weatherai.models.fuxi_ens import load_official, FuXiENSNoise, FuXiENS_lite, FuXiENSConfig
+model = load_official("/workspace/ckpt/fuxi_ens/fuxi_ens.onnx")          # strict state-dict load, weights memory-mapped (low RAM)
+g = torch.Generator().manual_seed(0)
+noise = FuXiENSNoise.sample(model.cfg, 1, g)                             # 2 dropout masks + latent normal noise, all explicit
+y = model(x, step, hour, doy, noise)                                     # x: [1,2,78,721,1440] physical units; step=t, hour=h/24, doy=min(365,doy)/365
+y2 = model(x, step, hour, doy, generator=torch.Generator().manual_seed(1))  # another ensemble member
+lite = FuXiENS_lite()                                                    # ~2.1 M params, same code, trainable (see tests)
+```
+
+**Random ops in the exported graph (handled):** the ONNX has no eval switch — `RandomUniformLike` (×2: dropout p=0.2 on the patch embedding
+`drop0` and on the output of `dist_p.layers.0` `drop1`, keep-prob 0.8, scale 1/0.8) and `RandomNormalLike` (latent noise) are always active, so
+two ONNX runs differ. For a deterministic comparison `scripts/fuxi_ens_fixed_noise_onnx.py` rewrites the 108 MB graph so these three tensors
+are graph *inputs* (no op is changed), and both runtimes receive identical tensors (torch generator seed 1234). `FuXiENSNoise` is the
+corresponding explicit input of the PyTorch model; `FuXiENS.forward` without `noise` draws all three from a `torch.Generator`.
+
+**Verified (CPU, fp32; `scripts/fuxi_ens_ort_segments.py` + `scripts/fuxi_ens_verify.py`; official `input.nc` 2018-09-13 18Z/2018-09-14 00Z,
+step=0, fixed noise):** one full forward (all 14 + 42 blocks), strict load of all 498 initialisers. Stage-by-stage vs onnxruntime 1.30 (max |Δ| / max |ref|):
+normalised input 0 (exact), patch embed 5e-7, dist_p layer 0 1.8e-6, dist_p out 1.4e-5, mean/logvar 4.7e-7 / 1.2e-6, sample 1.2e-7, decoder input `z` 6e-8,
+decoder layers 0–3 ≤ 1.5e-6, layer 4–5 1.7e-4–2.3e-4 (a few outlier tokens, rel-RMSE 1e-5), decoder out 8e-5. **Final output** (physical units, all 78 channels × 2 steps):
+max |Δ| = 1.66 on |values| up to 2.06e5 (geopotential; max |Δ|/max|ref| = 8.1e-6); per-channel max |Δ| / channel-std ≤ 3.3e-3 (precipitation `tp`, whose
+`exp(clip)-1` amplifies logit errors) and ≤ 1.8e-3 for every other channel; relative RMSE ≤ 1.1e-5 for every channel; NaN (SST land) positions identical; the pass-through
+step is bit-identical. That is fp32-rounding level for a 2.5 B-parameter network, **not** bit-exactness.
+
+**HF GPU (ZeroGPU Space, NVIDIA RTX PRO 6000 Blackwell MIG 2g.48gb, torch 2.13+cu130; `scripts/gpu_smoke.py fuxi_ens`): PASS.** The 9.9 GB weights were fetched *on the Space*
+from Zenodo with `scripts/fetch_fuxi_ens.py` (parallel HTTP range requests + local inflate: ≈ 430–480 s versus ≈ 3 MB/s ≈ 55 min for a single stream; `/tmp` has ≈ 3 TB free) and strict-loaded into CPU RAM
+(0.8 s, memory-mapped); then, inside the 120 s ZeroGPU window, moved to the GPU in **fp32 (no reduced precision was needed)**: 3 s, 11.5 GB resident, 16.0 GB peak, one forward 2.5 s.
+Same official `input.nc` and the same fixed noise (torch CPU generator, seed 1234) as the CPU run; compared on the committed stride-12 slice of the onnxruntime output (all 78 channels × both steps):
+max |Δ| = 0.078 (max |Δ|/channel-std = 5.9e-4, tolerance 1e-2·std); step-0 pass-through equal; a second member with different noise differs. TF32 disabled. The Space also passes the 10 synthetic unit tests (2 file-dependent tests skipped there). Only this single forward step was run on the GPU (no 15-day rollout, no bf16/fp16).
+Caveat: the Space weights are preloaded in a background thread (`fetch_fuxi_ens` endpoint) because a redeploy wipes `/tmp` and downloading does not fit into one 120 s GPU call.
 
 ## GenCast — native PyTorch denoiser (official architecture, official Mini weights load) + EDM/DPM-Solver++ sampler
 
@@ -405,7 +463,7 @@ Crossref / 出版社页面核实；“Code”为作者官方发布的仓库，�
 | Model | Paper (journal, year) | Official code / weights |
 |-------|-----------------------|-------------------------|
 | **NowcastNet** | Zhang et al., [Skilful nowcasting of extreme precipitation with NowcastNet](https://doi.org/10.1038/s41586-023-06184-4) — *Nature* 619, 2023 | [Code Ocean capsule](https://doi.org/10.24433/CO.0832447.v1) (code + pretrained weights, per the paper) |
-| **FuXi-ENS** | Zhong et al., [FuXi-ENS: A machine learning model for efficient and accurate ensemble weather prediction](https://doi.org/10.1126/sciadv.adu2854) — *Science Advances* 11, 2025 ⚠️ **not a Nature-family journal** | [tpys/FuXi-ENS](https://github.com/tpys/FuXi-ENS) (inference scripts; the repo README still says the model is on a restricted Google Drive) · **new:** public [Zenodo 10.5281/zenodo.15124541](https://zenodo.org/records/15124541) (CC-BY-NC-4.0; ONNX model + sample input; ONNX only, no PyTorch definition) |
+| **FuXi-ENS** | Zhong et al., [FuXi-ENS: A machine learning model for efficient and accurate ensemble weather prediction](https://doi.org/10.1126/sciadv.adu2854) — *Science Advances* 11, 2025 ⚠️ **not a Nature-family journal** | [tpys/FuXi-ENS](https://github.com/tpys/FuXi-ENS) (inference scripts; the repo README still says the model is on a restricted Google Drive) · public [Zenodo 10.5281/zenodo.15124541](https://zenodo.org/records/15124541) (CC-BY-NC-4.0; ONNX model + sample input; ONNX only — the PyTorch port here is reverse-engineered from it) |
 | **FuXi-DA** | Xu et al., [FuXi-DA: a generalized deep learning data assimilation framework for assimilating satellite observations](https://doi.org/10.1038/s41612-025-01039-3) — *npj Climate and Atmospheric Science* 8, 2025 (Nature Portfolio) | [xuxiaoze/FuXi-DA](https://github.com/xuxiaoze/FuXi-DA) (inference driver only; the README lists `model/` and `test_data/` but they are not published — see roadmap) |
 
 Notes / 备注:
@@ -425,7 +483,7 @@ Roadmap checklist:
 - [x] Aurora (Earth-system foundation model) — native PyTorch; official small checkpoint strict-loads, output matches official package (see above)
 - [x] Aardvark Weather — native PyTorch encoder + processor + station decoder; official checkpoints strict-load and E2E matches official code on the official sample (data loaders / training scripts not ported)
 - [x] WeatherNext Cyclones / WN-C (tropical cyclone ensembles) — native PyTorch network (official Mini weights strict-load; matches official JAX ForwardPass 2e-12 in float64 / 3e-3 in float32 at trained size); JAX wrapper kept as oracle; tracker/rollout/normalisation not ported
-- [ ] FuXi-ENS (ensemble forecasting) — **not ported; weights now obtainable (changed 2026-10-01 re-check)**: public Zenodo record 10.5281/zenodo.15124541 (CC-BY-NC-4.0, 9.5 GB zip: `fuxi_ens.onnx` 109 MB graph + 9.9 GB external weights, `input.nc`, inference scripts). Still ONNX-only (no PyTorch definition), so a native port would be a reverse-engineering of a 26k-node, 2.49 B-parameter graph (not started); the repo README still points to the restricted Drive
+- [~] FuXi-ENS (ensemble forecasting) — **native PyTorch port from the official ONNX** (`weatherai/models/fuxi_ens`; weights from Zenodo 10.5281/zenodo.15124541, CC-BY-NC-4.0, never committed): strict load, one forward step with fixed noise checked against onnxruntime (CPU, and on the HF GPU Space in fp32); multi-step / 15-day ensemble, skill and training of the official weights **not** verified; lite config trainable
 - [ ] FuXi-DA (satellite data assimilation) — **blocked**: `model/assimilation_v6.py` and `final_cast_10_assim_model.pth` + test data are not in the repo and not linked anywhere (open upstream issue xuxiaoze/FuXi-DA#2 asks for them, unanswered); only the inference driver is public, so the architecture cannot be reproduced or verified
 
 ## Disclaimer
