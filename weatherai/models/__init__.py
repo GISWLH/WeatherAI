@@ -7,6 +7,7 @@ from .graphcast.graphcast import GraphCast, GraphCast_lite
 from .aurora.aurora import Aurora_lite, Aurora_small, AuroraWrapper
 from .aardvark.aardvark import AardvarkProcessor, AardvarkProcessor_lite
 from .gencast.gencast import GenCast, GenCast_lite
+from .weathernext_cyclones.wnc import WeatherNextCyclonesWrapper, WeatherNextCyclones_lite
 from .neuralgcm.neuralgcm import NeuralGCM_lite, NeuralGCMWrapper
 
 # Preferred alias (paper-style capitalization)
@@ -30,4 +31,6 @@ __all__ = [
     "GenCast_lite",
     "AardvarkProcessor",
     "AardvarkProcessor_lite",
+    "WeatherNextCyclonesWrapper",
+    "WeatherNextCyclones_lite",
 ]

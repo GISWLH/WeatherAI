@@ -86,3 +86,22 @@ forecast-skill claim. GPU runs: Hugging Face Space
 * Not verified: forecast skill on real ERA5-like/Aardvark-assimilated states, multi-step use, other lead-time checkpoints (`forecast_2..10`).
 * Results: CPU: 7 tests passed (4.7 s); HF ZeroGPU (RTX PRO 6000 Blackwell MIG 2g.48gb): smoke with official checkpoint PASS 6.6 s,
   peak 696 MB, Space unit tests 5 passed / 2 skipped (official-checkpoint tests need `AARDVARK_PROC_CKPT`).
+
+## WeatherNext Cyclones (WN-C) — `weatherai.models.weathernext_cyclones` — **thin wrapper over official JAX code (no PyTorch port)**
+
+* Source: `google-deepmind/weathernext` (Apache-2.0 code; weights CC-BY-4.0) at commit f2f2c51. FGN = GraphCast-style grid↔mesh model with a
+  16-layer sparse-transformer processor and learned input noise; JAX/Haiku, TPU-oriented attention. **Decision:** no PyTorch re-implementation
+  (nothing but the JAX code to validate a port against, plus Haiku `.npz` conversion); `WeatherNextCyclonesWrapper` runs the official
+  predictor (config `weathernext2/configs/WeatherNextCyclones_Mini`) and returns xarray / torch tensors. Inference only; Python ≥ 3.12.
+* `WeatherNextCyclones_lite()` = official **WeatherNextCyclones_Mini_<2024** (1°, 13 levels, 12 h input / 6 h steps, 227 MB, public bucket
+  `gs://dm_graphcast/weathernext2/params`), run on the official 1° HRES-initialised sample (init 2024-10-07 00Z, 159 MB) with plain `mha`
+  attention (the official TPU `splash_mha` is unavailable on CPU; GPU would need `triblockdiag_mha`).
+* Verified (6 tests, CPU): checkpoint + config load; 2-member × 2-step ensemble forecast has the expected shapes, all fields finite; members differ
+  (RMS 0.51 K at 500 hPa/+12 h); 500 hPa T RMSE vs the HRES frames in the sample file is 0.40/0.50 K at +6/+12 h (persistence at +12 h: 3.05 K) —
+  a sanity check on one case, **not** a skill evaluation.
+* Not verified / not wrapped: the cyclone **tracker** and IBTrACS pipeline; the larger 0.25° models (need ≥H100-class memory); WN2 (100 m wind);
+  any statistics over more than one initial condition; GPU/TPU execution; numerical equality with an independent run of the official code (the
+  wrapper *is* the official code).
+* Results: CPU (box 8 cores, 15 GB): 6 tests passed in ~2 min (JAX compile dominated), 12 s per jitted forward after compile.
+  **HF GPU Space: not run** — the shared Space is Python 3.10 and pinned to a different JAX stack, ZeroGPU (10/10 Spaces already used) would
+  only provide JAX's CPU backend anyway unless jax[cuda] is set up, and the 3.12 weathernext install was not validated there.

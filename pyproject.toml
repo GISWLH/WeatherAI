@@ -33,6 +33,8 @@ data = ["cdsapi>=0.6.1"]
 # Official Microsoft Aurora (PyTorch, MIT) — needed by weatherai.models.aurora
 aurora = ["microsoft-aurora", "einops", "scipy"]
 # Official NeuralGCM (JAX) — needed by weatherai.models.neuralgcm
+# Official WeatherNext (JAX; python>=3.12) — needed by weatherai.models.weathernext_cyclones
+weathernext = ["weathernext @ git+https://github.com/google-deepmind/weathernext.git", "h5py", "h5netcdf", "xarray"]
 neuralgcm = ["jax", "neuralgcm", "dinosaur @ git+https://github.com/neuralgcm/dinosaur.git", "xarray"]
 # DeepMind GraphCast/WeatherNext JAX stack for tests/parity only (CPU is enough).
 parity = [

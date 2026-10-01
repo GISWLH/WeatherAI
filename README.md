@@ -23,6 +23,7 @@
 | **NeuralGCM** (wrapper, JAX) | `from weatherai.models import NeuralGCM_lite, NeuralGCMWrapper` | Thin inference wrapper over the official JAX `neuralgcm` package (not a PyTorch port) — see [NeuralGCM](#neuralgcm--wrapper-around-the-official-jax-package) |
 | **GenCast_lite** (re-implementation) | `from weatherai.models import GenCast, GenCast_lite` | PyTorch EDM diffusion + DPM-Solver++ 2S sampler (verified vs official JAX) with a small random-init denoiser; no official weights — see [GenCast](#gencast_lite--pytorch-re-implementation-diffusion-sampler-verified-vs-official-jax) |
 | **Aardvark** (processor only) | `from weatherai.models import AardvarkProcessor, AardvarkProcessor_lite` | PyTorch re-implementation of the **forecast ViT module only** (official checkpoint loads and matches official code) — *not* the end-to-end observation→forecast system; see [Aardvark](#aardvark-weather--processor-module-only) |
+| **WeatherNext Cyclones Mini** (wrapper, JAX) | `from weatherai.models import WeatherNextCyclones_lite` | Thin inference wrapper over the official JAX `weathernext` package (Python ≥3.12; not a PyTorch port; tracker not wrapped) — see [WN-C](#weathernext-cyclones-mini--wrapper-around-the-official-jax-package) |
 | **Aurora** (wrapper) | `from weatherai.models import Aurora_lite, Aurora_small` | Thin wrapper over the official `microsoft-aurora` PyTorch package — see [Aurora](#aurora--wrapper-around-the-official-package) |
 
 Architecture notes:
@@ -123,6 +124,26 @@ full = load_official_processor("forecast_1/epoch_0")   # strict=True load; 53.9 
 random input (max |Δ| ≈ 2e-4, CPU + HF GPU). **Not verified / missing:** encoder, decoder, data pipeline, forecast skill, lead times >24 h.
 Details: [docs/model_status.md](docs/model_status.md).
 
+## WeatherNext Cyclones Mini — wrapper around the official JAX package
+
+WN-C / WeatherNext 2 (FGN) is a JAX/Haiku GraphCast-style model with a sparse-transformer processor. **No PyTorch port**:
+`weatherai.models.weathernext_cyclones` runs the official code with the official **WeatherNextCyclones_Mini_<2024** checkpoint
+(1°, 227 MB; `pip install -e ".[weathernext]"`, **Python ≥ 3.12**) and returns `xarray` / `torch` tensors. Inference only.
+
+```python
+import xarray
+from weatherai.models import WeatherNextCyclones_lite
+from weatherai.models.weathernext_cyclones import download_sample_data
+
+w = WeatherNextCyclones_lite()                                   # official config + weights (downloads 227 MB)
+ds = xarray.load_dataset(download_sample_data()).compute()       # official 1° HRES sample (159 MB), init 2024-10-07 00Z
+out = w.forecast(ds, steps=2, num_members=2)                     # 2 members x 2 six-hour steps, dims (sample, time, batch, [level,] lat, lon)
+```
+
+**Status — verified (CPU only):** official checkpoint loads; ensemble forecast finite with expected shapes; members differ; one-case sanity check
+(500 hPa T RMSE vs the sample's HRES frames 0.5 K at +12 h vs 3.0 K for persistence — not a skill score).
+**Not verified:** cyclone tracker (not wrapped), 0.25° models, anything on GPU/TPU (no HF GPU run), multi-case statistics. Details: [docs/model_status.md](docs/model_status.md).
+
 ## Install / 安装
 
 ```bash
@@ -218,7 +239,6 @@ Crossref / 出版社页面核实；“Code”为作者官方发布的仓库，�
 | Model | Paper (journal, year) | Official code / weights |
 |-------|-----------------------|-------------------------|
 | **NowcastNet** | Zhang et al., [Skilful nowcasting of extreme precipitation with NowcastNet](https://doi.org/10.1038/s41586-023-06184-4) — *Nature* 619, 2023 | [Code Ocean capsule](https://doi.org/10.24433/CO.0832447.v1) (code + pretrained weights, per the paper) |
-| **WeatherNext Cyclones (WN-C)** | Alet et al., [Operational tropical cyclone forecasting with AI](https://doi.org/10.1038/s41586-026-10953-2) — *Nature* 657, 2026 | [google-deepmind/weathernext](https://github.com/google-deepmind/weathernext) (Apache-2.0; code + weights) |
 | **FuXi-ENS** | Zhong et al., [FuXi-ENS: A machine learning model for efficient and accurate ensemble weather prediction](https://doi.org/10.1126/sciadv.adu2854) — *Science Advances* 11, 2025 ⚠️ **not a Nature-family journal** | [tpys/FuXi-ENS](https://github.com/tpys/FuXi-ENS) (model files on a Google Drive; access limited, request from the authors) |
 | **FuXi-DA** | Xu et al., [FuXi-DA: a generalized deep learning data assimilation framework for assimilating satellite observations](https://doi.org/10.1038/s41612-025-01039-3) — *npj Climate and Atmospheric Science* 8, 2025 (Nature Portfolio) | [xuxiaoze/FuXi-DA](https://github.com/xuxiaoze/FuXi-DA) (inference example + checkpoint) |
 
@@ -238,7 +258,7 @@ Roadmap checklist:
 - [x] GenCast (diffusion-based ensemble forecasting) — lite PyTorch re-implementation; sampler verified vs official JAX, no official weights (see above)
 - [x] Aurora (Earth-system foundation model) — wrapper over official package; smoke-tested incl. official small checkpoint (see above)
 - [~] Aardvark Weather — **partial**: processor ViT only (official checkpoint loads, matches official code); encoder/decoder (observations → forecast) not implemented
-- [ ] WeatherNext Cyclones / WN-C (tropical cyclone ensembles)
+- [x] WeatherNext Cyclones / WN-C (tropical cyclone ensembles) — wrapper over official JAX package (Mini checkpoint, CPU-tested; tracker not wrapped)
 - [ ] FuXi-ENS (ensemble forecasting)
 - [ ] FuXi-DA (satellite data assimilation)
 
