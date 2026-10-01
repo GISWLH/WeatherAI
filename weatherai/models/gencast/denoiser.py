@@ -134,8 +134,9 @@ class ConditionedMLP(nn.Module):
 
 def _segment_sum(src: torch.Tensor, index: torch.Tensor, n: int) -> torch.Tensor:
     """(B,E,D) summed into (B,n,D) by receiver index (float32 accumulation like ``f32_aggregation``)."""
-    out = torch.zeros(src.shape[0], n, src.shape[2], dtype=torch.float32, device=src.device)
-    out.index_add_(1, index, src.float())
+    acc = torch.promote_types(src.dtype, torch.float32)  # float32 accumulation for half/bf16, float64 stays float64
+    out = torch.zeros(src.shape[0], n, src.shape[2], dtype=acc, device=src.device)
+    out.index_add_(1, index, src.to(acc))
     return out.to(src.dtype)
 
 

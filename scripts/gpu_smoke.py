@@ -267,7 +267,78 @@ def smoke_aardvark(device: str, pretrained: bool = False) -> dict:
     return checks
 
 
-SMOKES = {"aardvark": smoke_aardvark, "gencast": smoke_gencast, "neuralgcm": smoke_neuralgcm, "aurora": smoke_aurora, "graphcast": smoke_graphcast}
+def smoke_weathernext_cyclones(device: str, pretrained: bool = False) -> dict:
+    """Native WN-C network: lite fwd/bwd/sample + CRPS train step; with ``pretrained`` also the official
+    WeatherNextCyclones_Mini_<2024 weights (gs://dm_graphcast, public) strict-loaded and compared with the official JAX
+    ``ForwardPass`` outputs stored in ``tests/models/weathernext_cyclones/data`` (mesh_splits=2, k_hop=3, 13x24 grid):
+    float64 reference (structure, atol 1e-9) and float32 reference (atol 5e-3)."""
+    import os
+    import urllib.request
+
+    import numpy as np
+
+    from weatherai.models.weathernext_cyclones import (
+        WeatherNextCyclonesNative_lite,
+        WeatherNextCyclonesNet_from_official,
+        stack_grid_inputs,
+        stack_mesh_inputs,
+        unstack_outputs,
+    )
+
+    torch.manual_seed(0)
+    m = WeatherNextCyclonesNative_lite().to(device)
+    gx, mx = torch.randn(2, 16 * 32, 12, device=device), torch.randn(2, 2, device=device)
+    tgt = torch.randn(2, 16 * 32, m.net.cfg.out_channels, device=device)
+    loss = m.loss(gx, mx, tgt, num_samples=3)
+    loss.backward()
+    with torch.no_grad():
+        s = m.sample(gx, mx, num_samples=4, generator=torch.Generator(device=device).manual_seed(0))
+    checks = {
+        "params_M": round(sum(p.numel() for p in m.parameters()) / 1e6, 3),
+        "loss_finite": bool(torch.isfinite(loss)),
+        "backward_finite": all(torch.isfinite(p.grad).all() for p in m.parameters() if p.grad is not None),
+        "sample_shape_ok": tuple(s.shape) == (4, 2, 16 * 32, m.net.cfg.out_channels),
+        "sample_finite": bool(torch.isfinite(s).all()),
+        "members_differ": bool(s.std(0).mean() > 0),
+    }
+    if not pretrained:
+        return checks
+    ck = "/tmp/wnc_mini.npz"
+    if not os.path.exists(ck):
+        urllib.request.urlretrieve("https://storage.googleapis.com/dm_graphcast/weathernext2/params/WeatherNextCyclones_Mini_%3C2024.npz", ck)
+    here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    d = os.path.join(here, "tests", "models", "weathernext_cyclones", "data")
+    checks["official_weights_strict_load"] = True
+
+    def errs(ref_name, dtype, attention_type):
+        r = np.load(os.path.join(d, ref_name))
+        net = WeatherNextCyclonesNet_from_official(ck, r["lat"], r["lon"], mesh_splits=int(r["splits"]), attention_k_hop=int(r["k_hop"]),
+                                                   attention_type=attention_type).to(device=device, dtype=dtype)
+        grp = lambda tag: {k.split("/", 1)[1]: r[k] for k in r.files if k.startswith(tag + "/")}  # noqa: E731
+        shape = (len(r["lat"]), len(r["lon"]))
+        g = stack_grid_inputs(grp("inputs"), grp("forcings"), shape).to(device=device, dtype=dtype)
+        mm = stack_mesh_inputs(grp("inputs"), grp("forcings")).to(device=device, dtype=dtype)
+        with torch.no_grad():
+            y = net(g, mm, torch.from_numpy(r["noise"]).to(device=device, dtype=dtype))
+        out = unstack_outputs(y, net.cfg, shape)
+        return max(float(np.abs(out[k].cpu().numpy() - r["out/" + k]).max()) for k in r["target_variables"])
+
+    for att in ("dense", "triblockdiag"):
+        checks[f"max_abs_err_vs_official_jax_float64_{att}"] = errs("forward_ref_small_f64.npz", torch.float64, att)
+        checks[f"{att}_float64_matches_official_atol_1e-9"] = bool(checks[f"max_abs_err_vs_official_jax_float64_{att}"] < 1e-9)
+    for att in ("dense", "triblockdiag"):
+        checks[f"max_abs_err_vs_official_jax_float32_{att}_default_tf32"] = errs("forward_ref_small.npz", torch.float32, att)
+    old = (torch.backends.cudnn.allow_tf32, torch.backends.cuda.matmul.allow_tf32)
+    torch.backends.cudnn.allow_tf32 = torch.backends.cuda.matmul.allow_tf32 = False
+    e = {att: errs("forward_ref_small.npz", torch.float32, att) for att in ("dense", "triblockdiag")}
+    torch.backends.cudnn.allow_tf32, torch.backends.cuda.matmul.allow_tf32 = old
+    for att, v in e.items():
+        checks[f"max_abs_err_vs_official_jax_float32_{att}_tf32_off"] = v
+        checks[f"{att}_float32_matches_official_atol_5e-3_tf32_off"] = bool(v < 5e-3)
+    return checks
+
+
+SMOKES = {"weathernext_cyclones": smoke_weathernext_cyclones, "aardvark": smoke_aardvark, "gencast": smoke_gencast, "neuralgcm": smoke_neuralgcm, "aurora": smoke_aurora, "graphcast": smoke_graphcast}
 
 
 def run(name: str, device: str, **kw) -> dict:
@@ -294,5 +365,5 @@ if __name__ == "__main__":
     ap.add_argument("--device", default="cpu")
     ap.add_argument("--pretrained", action="store_true")
     a = ap.parse_args()
-    kw = {"pretrained": a.pretrained} if a.model in ("aurora", "aardvark", "gencast") else {}
+    kw = {"pretrained": a.pretrained} if a.model in ("aurora", "aardvark", "gencast", "weathernext_cyclones") else {}
     print(json.dumps(run(a.model, a.device, **kw)))

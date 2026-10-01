@@ -23,7 +23,7 @@
 | **NeuralGCM** (wrapper, JAX) | `from weatherai.models import NeuralGCM_lite, NeuralGCMWrapper` | Thin inference wrapper over the official JAX `neuralgcm` package (not a PyTorch port) — see [NeuralGCM](#neuralgcm--wrapper-around-the-official-jax-package) |
 | **GenCast** (native denoiser + sampler) | `from weatherai.models.gencast import GenCastDenoiser_from_official, GenCast_lite` | explicit PyTorch port of the official denoiser (grid2mesh GNN, k-hop mesh transformer, mesh2grid GNN); official Mini weights strict-load and match official JAX (network only) — see [GenCast](#gencast--native-pytorch-denoiser-official-architecture-official-mini-weights-load--edmdpm-solver-sampler) |
 | **Aardvark** (encoder + processor + station decoder) | `from weatherai.models.aardvark import AardvarkEncoder, AardvarkProcessor, AardvarkDecoder, AardvarkE2E` | Explicit PyTorch port of everything the official public code defines (set-conv observation encoder + ViT, forecast ViT, U-Net + set-conv + MLP station decoder); the three official checkpoints strict-load and the E2E output matches the official code on the official sample — see [Aardvark](#aardvark-weather--native-pytorch-encoder--processor--decoder) |
-| **WeatherNext Cyclones Mini** (wrapper, JAX) | `from weatherai.models import WeatherNextCyclones_lite` | Thin inference wrapper over the official JAX `weathernext` package (Python ≥3.12; not a PyTorch port; tracker not wrapped) — see [WN-C](#weathernext-cyclones-mini--wrapper-around-the-official-jax-package) |
+| **WeatherNext Cyclones Mini** (native network + JAX oracle) | `from weatherai.models.weathernext_cyclones import WeatherNextCyclonesNet_from_official, WeatherNextCyclonesNative_lite` | Explicit PyTorch port of the official FGN network (noise-conditioned grid/mesh encoders, ball-query grid→mesh GNN, 16-layer k-hop mesh transformer, mesh→grid GNN, split decoder); official Mini weights strict-load and match official JAX; official-JAX wrapper kept as oracle; tracker/rollout/normalisation not ported — see [WN-C](#weathernext-cyclones-mini--native-pytorch-network-official-mini-weights-load-jax-wrapper-kept-as-oracle) |
 | **Aurora** (native PyTorch) | `from weatherai.models import Aurora, Aurora_lite, Aurora_small` | Explicit Perceiver encoder → Swin-3D U-Net → Perceiver decoder; official small ckpt strict-loads and matches the official package bit-for-bit on the tested inputs — see [Aurora](#aurora--native-pytorch-implementation) |
 
 Architecture notes:
@@ -187,25 +187,47 @@ cannot be executed), the FiLM / attention options of the official U-Net (unused 
 decoder checkpoints other than `tas/lt_1`, processors `forecast_2..10`, multi-step E2E, other station variables (`ws`), skill vs. observations.
 The official sample has one timestep only, so the comparison covers that single case.
 
-## WeatherNext Cyclones Mini — wrapper around the official JAX package
+## WeatherNext Cyclones Mini — native PyTorch network (official Mini weights load), JAX wrapper kept as oracle
 
-WN-C / WeatherNext 2 (FGN) is a JAX/Haiku GraphCast-style model with a sparse-transformer processor. **No PyTorch port**:
-`weatherai.models.weathernext_cyclones` runs the official code with the official **WeatherNextCyclones_Mini_<2024** checkpoint
-(1°, 227 MB; `pip install -e ".[weathernext]"`, **Python ≥ 3.12**) and returns `xarray` / `torch` tensors. Inference only.
+WN-C / WeatherNext 2 (FGN, a *Functional Generative Network*) is the same family as GenCast/GraphCast (grid → icosahedral mesh → 16-layer k-hop
+transformer → grid) but with its own wiring: instead of a diffusion noise level, a 32-channel N(0,1) vector conditions every normalisation, the
+encoders/decoder are one big split-input / split-output linear over all variables, and the GNN edge MLPs use the "pre-gather matmul" form.
+`weatherai.models.weathernext_cyclones` now contains an **explicit native PyTorch port of that network** (`network.py`; transformer, attention
+and graph code are shared with the GenCast port), with the official `WeatherNextCyclones_Mini_<2024` weights converted 1:1 and
+`WeatherNextCyclonesWrapper` (official JAX, Python ≥ 3.12) retained only as a test/oracle path.
 
 ```python
-import xarray
-from weatherai.models import WeatherNextCyclones_lite
-from weatherai.models.weathernext_cyclones import download_sample_data
+import numpy as np, torch
+from weatherai.models.weathernext_cyclones import (
+    WeatherNextCyclonesNet_from_official, stack_grid_inputs, stack_mesh_inputs, unstack_outputs, download_checkpoint)
 
-w = WeatherNextCyclones_lite()                                   # official config + weights (downloads 227 MB)
-ds = xarray.load_dataset(download_sample_data()).compute()       # official 1° HRES sample (159 MB), init 2024-10-07 00Z
-out = w.forecast(ds, steps=2, num_members=2)                     # 2 members x 2 six-hour steps, dims (sample, time, batch, [level,] lat, lon)
+lat = np.arange(-90, 90.5, 1.0, dtype=np.float32); lon = np.arange(0, 360, 1.0, dtype=np.float32)   # official 1° grid, 181x360
+net = WeatherNextCyclonesNet_from_official(download_checkpoint(), lat, lon, attention_type="triblockdiag")   # 56.7 M params, strict load
+# inputs: *normalised* fields in the official layout (see stack_grid_inputs), noise ~ N(0,1) of shape (batch, 32)
+gx = stack_grid_inputs(inputs, forcings, (181, 360)); mx = stack_mesh_inputs(inputs, forcings)
+y = net(gx, mx, torch.randn(1, 32))                  # (B, H*W, 101) one 6 h step, all 29 target variables
+fields = unstack_outputs(y, net.cfg, (181, 360))     # {name: (B,1,[13,]181,360)}
 ```
 
-**Status — verified (CPU only):** official checkpoint loads; ensemble forecast finite with expected shapes; members differ; one-case sanity check
-(500 hPa T RMSE vs the sample's HRES frames 0.5 K at +12 h vs 3.0 K for persistence — not a skill score).
-**Not verified:** cyclone tracker (not wrapped), 0.25° models, anything on GPU/TPU (no HF GPU run), multi-case statistics. Details: [docs/model_status.md](docs/model_status.md).
+Trainable, config-driven variant (same modules, ~0.2 M params, fair-CRPS ensemble loss as in the official `fgn.Predictor`):
+`WeatherNextCyclonesNative_lite()` → `m.loss(grid_x, mesh_x, target, num_samples=2)`; example in `tests/models/weathernext_cyclones/test_wnc_native.py`.
+
+**Status — verified:**
+* All 376 official parameter arrays (56 684 133 weights) are consumed exactly once by `convert_official_params` and strict-load.
+* Network vs the **official JAX `ForwardPass`** (official Mini weights, random inputs + noise, plain `mha`; JAX/Haiku run on CPU):
+  * float64 reference, mesh_splits=2, k_hop=3, 13×24 grid, batch 2 (the *reference* is run with x64 and its bf16-oriented fp32 up-casts disabled, so rounding
+    cannot hide a structural error): native vs official max |Δ| **2.2e-12** (dense attention) / **2.1e-12** (banded attention) — test tolerance 1e-9.
+  * float32 official run, same small config: max |Δ| 1.4e-3 (outputs up to ~26; official-JAX f32 vs official-JAX f64 differ by 9.3e-4) — test tolerance 5e-3.
+  * **trained size** (mesh_splits=5 → 10 242 mesh nodes, k_hop 16, 181×360 grid, banded attention, float32): max |Δ| 2.8e-3 on outputs up to ~25
+    (per variable ≤ 2.9e-3; probabilities 3.5e-6) — test tolerance 5e-3 (the 65 MB reference is not committed; regenerate with `scripts/wnc_forward_reference.py full`).
+  * graph edge sets (ball query grid→mesh 101 892 edges; closest triangle mesh→grid 195 480 edges at full size, 576/936 at the small size) equal the official arrays.
+* HF ZeroGPU (RTX PRO 6000 Blackwell MIG, torch 2.13+cu130) `--pretrained` smoke: PASS — strict load, float64 max |Δ| 1.9e-12 / 1.6e-12 (dense / banded), float32 max |Δ|
+  7.6e-4 / 1.2e-3 (TF32 off) and 8.3e-4 / 1.3e-3 (TF32 default), peak 533 MB; Space unit tests: 5 passed, 10 skipped (the skips need local official ckpt or the JAX package; parity is covered by the smoke).
+
+**Not verified / not ported:** the `fgn.Predictor` wrapper stack (input/residual normalisation constants, NaN cleaning of SST, autoregressive rollout, the
+2-sample training ensemble), data pipeline/ERA5-HRES loading, the **cyclone tracker** (`cyclones/direct_tracker.py`) and IBTrACS pipeline; multi-step forecasts of the
+native model; the 0.25° / WN2 / `<2023` checkpoints; skill. The comparison is network-level on random inputs, not forecast-level on real data. The official TPU
+`splash_mha` kernel is not used (neither on our side nor in the reference). Stochastic sampling: noise is drawn iid N(0,1) as in the official `gaussian_noise_generator`.
 
 ## Install / 安装
 
@@ -321,7 +343,7 @@ Roadmap checklist:
 - [x] GenCast (diffusion-based ensemble forecasting) — native PyTorch denoiser (official Mini weights load, network matches official JAX to 5e-5) + verified sampler; full-model/SH-noise/normalisation pipeline not ported (see above)
 - [x] Aurora (Earth-system foundation model) — native PyTorch; official small checkpoint strict-loads, output matches official package (see above)
 - [x] Aardvark Weather — native PyTorch encoder + processor + station decoder; official checkpoints strict-load and E2E matches official code on the official sample (data loaders / training scripts not ported)
-- [x] WeatherNext Cyclones / WN-C (tropical cyclone ensembles) — wrapper over official JAX package (Mini checkpoint, CPU-tested; tracker not wrapped)
+- [x] WeatherNext Cyclones / WN-C (tropical cyclone ensembles) — native PyTorch network (official Mini weights strict-load; matches official JAX ForwardPass 2e-12 in float64 / 3e-3 in float32 at trained size); JAX wrapper kept as oracle; tracker/rollout/normalisation not ported
 - [ ] FuXi-ENS (ensemble forecasting) — **blocked**: official repo has inference scripts only; model (`fuxi_ens.onnx`) and sample data are on a restricted Google Drive (request from the authors); no PyTorch definition published
 - [ ] FuXi-DA (satellite data assimilation) — **blocked**: `model/assimilation_v6.py` and `final_cast_10_assim_model.pth` + test data are not in the repo and not linked anywhere (open upstream issue xuxiaoze/FuXi-DA#2 asks for them, unanswered); only the inference driver is public, so the architecture cannot be reproduced or verified
 

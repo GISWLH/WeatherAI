@@ -105,24 +105,37 @@ forecast-skill claim. GPU runs: Hugging Face Space
   System vs the CPU official reference: with TF32 off encoder-state 1.4e-5, station 5.7e-6, gridded forecast rel 9.4e-5 (PASS at 1e-3). With the GPU default (TF32 convs/matmul) errors are 4.7e-4 / 1.5e-3 / 2.1e-3, i.e. TF32 noise, not a structural difference.
   Space unit tests: 12 passed, 5 skipped (the skips need local official ckpts).
 
-## WeatherNext Cyclones (WN-C) — `weatherai.models.weathernext_cyclones` — **thin wrapper over official JAX code (no PyTorch port)**
+## WeatherNext Cyclones (WN-C) — `weatherai.models.weathernext_cyclones` — **native PyTorch network (official Mini weights load); official-JAX wrapper kept as oracle**
 
-* Source: `google-deepmind/weathernext` (Apache-2.0 code; weights CC-BY-4.0) at commit f2f2c51. FGN = GraphCast-style grid↔mesh model with a
-  16-layer sparse-transformer processor and learned input noise; JAX/Haiku, TPU-oriented attention. **Decision:** no PyTorch re-implementation
-  (nothing but the JAX code to validate a port against, plus Haiku `.npz` conversion); `WeatherNextCyclonesWrapper` runs the official
-  predictor (config `weathernext2/configs/WeatherNextCyclones_Mini`) and returns xarray / torch tensors. Inference only; Python ≥ 3.12.
-* `WeatherNextCyclones_lite()` = official **WeatherNextCyclones_Mini_<2024** (1°, 13 levels, 12 h input / 6 h steps, 227 MB, public bucket
-  `gs://dm_graphcast/weathernext2/params`), run on the official 1° HRES-initialised sample (init 2024-10-07 00Z, 159 MB) with plain `mha`
-  attention (the official TPU `splash_mha` is unavailable on CPU; GPU would need `triblockdiag_mha`).
-* Verified (6 tests, CPU): checkpoint + config load; 2-member × 2-step ensemble forecast has the expected shapes, all fields finite; members differ
-  (RMS 0.51 K at 500 hPa/+12 h); 500 hPa T RMSE vs the HRES frames in the sample file is 0.40/0.50 K at +6/+12 h (persistence at +12 h: 3.05 K) —
-  a sanity check on one case, **not** a skill evaluation.
-* Not verified / not wrapped: the cyclone **tracker** and IBTrACS pipeline; the larger 0.25° models (need ≥H100-class memory); WN2 (100 m wind);
-  any statistics over more than one initial condition; GPU/TPU execution; numerical equality with an independent run of the official code (the
-  wrapper *is* the official code).
-* Results: CPU (box 8 cores, 15 GB): 6 tests passed in ~2 min (JAX compile dominated), 12 s per jitted forward after compile.
-  **HF GPU Space: not run** — the shared Space is Python 3.10 and pinned to a different JAX stack, ZeroGPU (10/10 Spaces already used) would
-  only provide JAX's CPU backend anyway unless jax[cuda] is set up, and the 3.12 weathernext install was not validated there.
+* Source: `google-deepmind/weathernext` (Apache-2.0 code; weights CC-BY-4.0) at commit f2f2c51 (`weathernext2/architecture.py`, `fgn.py`, `utils/{deep_gnn,points_mesh_gnn,xarray_dense,dense,sparse_transformer,mesh_transformer}.py`).
+* **Same family as GenCast, not the same layout.** Reused from the GenCast port: conditioned MLP/LayerNorm blocks, the 16-layer k-hop mesh transformer, banded (RCM) mesh + dense/`triblockdiag` attention,
+  graph helpers. WN-C specific (new in `network.py`/`graphs.py`/`fgn.py`): 32-channel noise → conditioning (`Linear(32,32,no bias)`), split-input-matmul grid / mesh encoders over all
+  (variable, time) channels (+ sin lat, sin lon, cos lon), `pre_gather_matmul` GNN edge MLPs (`W_e e + W_s v_s[s] (+ W_r v_r[r]) + b → Linear → LN → cond`; grid→mesh has no receiver term), edge MLP with
+  32-d edge encoder, receiver-sorted edges, ball-query (0.6 × longest mesh edge) grid→mesh, closest-triangle mesh→grid, decoder `Linear→swish→Linear(101)` with `sigmoid(x−2)` on
+  `cyclone_exists_gaussian_unit_mode`; node positions re-derived from float32 lat/lon exactly as the official code (this matters for edge tie-breaking).
+* Conversion: `convert_official_params` consumes **every** one of the 376 `params:` arrays (56 684 133 weights) and fails on leftovers; the per-(variable,time) split weights are concatenated in the
+  official channel order (names sorted: `forcing_*` < `input_*` < `spatial`, then time, then level). `strict=True` load.
+* Verification (references from the official `ForwardPass`, Mini weights, random inputs/noise, plain `mha`; `scripts/wnc_forward_reference.py`):
+  | case | precision | native vs official max abs diff | test tolerance |
+  |---|---|---|---|
+  | splits 2, k_hop 3, 13×24, batch 2, dense attention | JAX x64 reference | 2.2e-12 | 1e-9 |
+  | same, banded attention | JAX x64 reference | 2.1e-12 | 1e-9 |
+  | same | float32 | 1.4e-3 (JAX f32 vs JAX f64: 9.3e-4; outputs ≤ ~26) | 5e-3 |
+  | **trained size**: splits 5 (10 242 nodes), k_hop 16, 181×360, banded | float32 | 2.8e-3 (outputs ≤ ~25; cyclone probability 3.5e-6) | 5e-3 |
+  The float64 case is the structural proof; the float32 cases are bounded by float32 rounding of the 16-layer network (official f32 vs official f64 differs by the same order). In the f64 reference
+  the official bf16-motivated up-cast of the attention softmax and the `f32_aggregation` flag are switched off (reference-side only), otherwise they would add 4e-5 of artificial difference.
+  Edge sets equal the official arrays (compared as sorted (receiver, sender) pairs: the official unstable `np.argsort` orders edges inside a receiver numpy-version-dependently; sums are order-free).
+* Trainable: `WeatherNextCyclonesNative_lite()` (config-driven; random init) + `WNCEnsemble.loss` (fair CRPS over noise draws, per-channel weights) — test: 60 Adam steps lower the loss by >15 %, all
+  parameters except the (official, unused-in-output) mesh-node MLP of the mesh→grid GNN receive gradients.
+* Tests (`tests/models/weathernext_cyclones/test_wnc_native.py`, 9, plus the 6 original wrapper tests that skip without the official `weathernext` package): edge sets, strict-load/param accounting, f64 and f32
+  parity, full-resolution parity (skips without the 65 MB reference), banded == dense attention with random weights, noise dependence/sigmoid range, CRPS properties, training step.
+* HF ZeroGPU (RTX PRO 6000 Blackwell MIG, torch 2.13+cu130) `--pretrained` smoke: **PASS**; strict-load; f64 max |Δ| 1.9e-12 (dense) / 1.6e-12 (banded); f32 TF32-off 7.6e-4 / 1.2e-3,
+  TF32-default 8.3e-4 / 1.3e-3; peak 533 MB. Space unit tests: 5 passed, 10 skipped (skips need the local official ckpt / JAX package; parity is covered by the smoke). The full-resolution comparison is CPU only (50 s on the box).
+* **Not ported / not verified:** `fgn.Predictor` wrappers (InputsAndResiduals normalisation constants, NaN cleaner for SST, autoregressive rollout, ensemble `WithSampleDim`), data loading, the
+  cyclone direct tracker (`cyclones/direct_tracker.py`, 1.9 k lines) and IBTrACS handling, 0.25° / WN2 / `<2023` checkpoints, forecast-level (real-data, multi-step) comparison and skill. Verification is
+  of the neural network on random inputs, not of a forecast. `splash_mha` (TPU) not used on either side.
+* The JAX wrapper (`WeatherNextCyclonesWrapper`, Python ≥ 3.12, official package) is unchanged and remains the oracle for forecast-level checks; its earlier results (CPU: 6 tests, 500 hPa T RMSE vs HRES 0.40/0.50 K at +6/+12 h
+  on one case, not a skill score) still stand.
 
 ## Blocked (not started; nothing faked)
 
