@@ -23,7 +23,7 @@ def _smoke(model: str, pretrained: bool) -> str:
     from scripts.gpu_smoke import run
 
     dev = "cuda" if torch.cuda.is_available() else "cpu"
-    kw = {"pretrained": pretrained} if model in ("aurora", "aardvark", "gencast", "weathernext_cyclones") else {}
+    kw = {"pretrained": pretrained} if model in ("aurora", "aardvark", "gencast", "weathernext_cyclones", "neuralgcm") else {}
     return json.dumps(run(model, dev, **kw), indent=2)
 
 
@@ -39,7 +39,7 @@ def smoke_cpu(model: str, pretrained: bool = False) -> str:
     try:
         from scripts.gpu_smoke import run
 
-        return json.dumps(run(model, "cpu", **({"pretrained": pretrained} if model in ("aurora", "aardvark", "gencast", "weathernext_cyclones") else {})), indent=2)
+        return json.dumps(run(model, "cpu", **({"pretrained": pretrained} if model in ("aurora", "aardvark", "gencast", "weathernext_cyclones", "neuralgcm") else {})), indent=2)
     except Exception:
         return "STATUS=FAIL\n" + traceback.format_exc()
 

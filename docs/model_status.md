@@ -29,27 +29,36 @@ forecast-skill claim. GPU runs: Hugging Face Space
   33x64 inputs max |diff| 0.0 / 0.0 (allclose True). Space unit tests: 11 passed, 1 skipped (the skipped one needs the local
   small ckpt path; the same parity is covered by the smoke).
 
-## NeuralGCM — `weatherai.models.neuralgcm` — **thin wrapper over official JAX code** (no PyTorch port)
+## NeuralGCM — `weatherai.models.neuralgcm` — **partial native port (learned components + spherical-harmonic layer, numerically checked vs official JAX); dynamical core and feature builders NOT ported; official-JAX wrapper kept as oracle**
 
-* Source: <https://github.com/neuralgcm/neuralgcm> (Apache-2.0 code; weights CC-BY-SA-4.0) at commit eb0485b,
-  plus `dinosaur` (spectral dynamical core). Model = differentiable primitive-equation solver +
-  learned Haiku/JAX components. **Decision:** a PyTorch re-implementation (spherical-harmonic
-  transforms, semi-implicit stepping, trained correctors, checkpoint conversion) was judged out of scope
-  and would not be verifiable against the checkpoints; so `NeuralGCMWrapper` runs the official code
-  unchanged and only converts I/O (xarray ↔ torch tensors). Inference only: no torch autograd through JAX.
-* `NeuralGCM_lite()` = official `v1/deterministic_2_8_deg.pkl` (58 MB, 128×64 grid, 37 levels, 1 h
-  internal step), public GCS bucket `gs://neuralgcm/models/` (no credentials).
-* Verified (6 tests): checkpoint loads; grid/levels/variables as expected; forecast from the
-  official bundled ERA5 demo snapshot (1959-01-02 00Z) is finite for all variables and evolves
-  (500 hPa T RMS change vs. t=0: 1.0 K at 6 h, 1.6 K at 12 h, 2.2 K at 18 h in a 4-step run);
-  deterministic model is seed-independent; wrapper output is bit-identical to a direct upstream
-  call; torch conversion works.
-* Not verified: skill against ERA5 (no verification against truth beyond the single demo
-  snapshot), the higher-resolution (1.4°/0.7°) or stochastic checkpoints, GPU execution of JAX.
-* Results: CPU (box, 8 cores): tests 6 passed (~4-5 min, dominated by JAX compile), smoke PASS 62 s.
-  HF Space (ZeroGPU allocation, NVIDIA RTX PRO 6000 Blackwell MIG 2g.48gb): smoke PASS 60 s, **but
-  JAX ran on its CPU backend** (`jax[cpu]`; GPU peak memory 0 MB) — so this is *not* a GPU test of
-  NeuralGCM, only a check that the official stack installs and runs on the Space.
+* Source: <https://github.com/neuralgcm/neuralgcm> (Apache-2.0 code; weights CC-BY-SA-4.0) at commit eb0485b (pip `neuralgcm` 1.2.3), plus `dinosaur` 1.5.0 (spectral dycore).
+  Checkpoint: official `v1/deterministic_2_8_deg.pkl` (58 MB, public `gs://neuralgcm/models/`), 128×64 grid, 37 pressure levels / 32 sigma levels, 1 h internal step.
+* **Checkpoint anatomy** (from the pickle's gin config + 121 Haiku modules, 14,518,180 weights, all consumed by `convert_official_params`):
+  decoder EPD tower (784→384, 5×[4-layer 384 gelu-MLP residual], 384→259); two encoder EPD towers (1052→384→193) each with learned orography (4223 modal coefficients) and
+  learned positional features (8×128×64); physics `div_curl_neural_parameterization` EPD tower (2365→384→192) + its learned positional features + three small surface EPD towers
+  (land/sea/sea-ice, latent 8) + a 5-layer vertical Conv1D tower (k=5, 64 ch → 32 features); learned dycore-corrector orography (4094 coefficients). Activation = tanh-approximate GELU.
+* **Ported natively** (`network.py`, `spectral.py`): `ColumnMLP`/`EpdTower`, `VerticalConvTower`, `SurfaceEmbedding`, `LearnedPositionalFeatures`, `LearnedOrography`, `NeuralGCMLearnedComponents`
+  (+ `convert_official_params`, strict), and `SphericalHarmonicsGrid` (real Fourier × associated-Legendre basis on a Gauss–Legendre grid; `to_modal/to_nodal`, Laplacian/inverse, ∂λ, cosφ∂φ,
+  secφ∂φcos²φ, grad/div/curl with top-wavenumber clip, u,v ↔ vorticity/divergence). Everything is differentiable.
+* **Numerical verification (CPU, float32; reference = official JAX run with Haiku method interception, `scripts/neuralgcm_tower_reference.py`, `scripts/neuralgcm_sht_reference.py`; data in
+  `tests/models/neuralgcm/data/`)**: real packed tower inputs of one official `encode → advance → decode` step on the demo ERA5 snapshot, 24 random columns. max |native − official|:
+  decoder 1.5e-4 (|y|≤206), encoder 1.3e-3 (|y|≤699, rel 1.9e-6), encoder_1 1.1e-4, physics 1.3e-5 (|y|≤20), surface towers 9.5e-7 / 7.2e-7 / 5.8e-6, surface blend ≤1e-5,
+  vertical CNN 2.2e-7 (|y|≤0.11), learned orography (base + scale·correction) exactly 0.0, masks identical. SH layer on random fields (grid 128×64, modal 127×65): `to_nodal` 3.1e-5 (|y|≤77),
+  `to_modal` 6e-8, ∇²/∇⁻²/∂λ exactly 0.0, cosφ∂φ 1.5e-5, grad/div/curl ≤1.5e-5, vorticity/divergence from u,v ≤3.8e-5 (|y|≤98), u,v round trip ≤3.2e-5 (|y|≤44); float64 `to_modal∘to_nodal`
+  is the identity to 1e-10. Test tolerances are looser than these (tests/models/neuralgcm/test_neuralgcm_native.py, 13 tests; the 5 tower/orography tests need the checkpoint).
+* **Not ported — exact stuck points**
+  1. *Dynamical core (`dinosaur`, ~26k lines incl. tests; `primitive_equations.py` 3.8 k, `time_integration.py` 1.2 k, `sigma_coordinates.py`, `filtering.py`)*: moist primitive equations with cloud moisture on 32 sigma
+     levels (`MoistPrimitiveEquationsWithCloudMoisture`), `imex_rk_sil3` implicit-explicit stepper with a semi-implicit linear operator solved in spectral space per total wavenumber, 5 inner dycore substeps per
+     physics call, exponential/sequential filters, `DycoreWithPhysicsCorrector`. Only the horizontal SH operators of it are ported; the vertical operators, implicit solve, explicit terms and the stepper are not,
+     so there is no torch time-stepper and no native forecast.
+  2. *Feature builders around the towers*: the 784/1052/2365-channel tower inputs are assembled from dimensional-unit conversions, velocity/prognostic features in `(u,v)` and `(vor,div)` forms, pressure/radiation/latitude/forcing
+     features, memory features, `ShiftAndNormalize` constants (stored in the checkpoint's `aux_ds_dict`), input clipping and exponential filters, and output transforms (`div_curl_tendency_outputs`, encoder combined transform). Tower
+     inputs/outputs were verified in isolation on captured *real* tensors; the code that builds those tensors from model state is not ported, so tower-level equality is the strongest claim.
+  3. *Orography data* (`FilteredCustomOrography`: filtered ERA5 orography from `aux_ds_dict` regridded in modal space) was used only through its captured output (`o*_base` in the reference data).
+  4. Stochastic checkpoints (noise modules, `stochastic.py`), the 1.4°/0.7° checkpoints and `unroll` plumbing (forcing interpolation) — not ported/not run natively.
+* Wrapper (unchanged, oracle): `NeuralGCMWrapper`/`NeuralGCM_lite()` runs the official code; 6 tests (checkpoint loads; grid/levels/vars; finite and evolving forecast from the bundled ERA5 snapshot; seed-independence;
+  wrapper == direct upstream call bit-for-bit; torch conversion). Not verified: skill vs ERA5 beyond the single demo snapshot, other checkpoints, JAX on GPU (`jax[cpu]` on the Space).
+* Results: CPU (box): native tests 13 passed; smoke PASS (all checks above, plus the JAX forecast). HF Space (RTX PRO 6000 Blackwell MIG 2g.48gb, torch 2.13+cu130): smoke PASS, official checkpoint strict-loaded on the Space; native-vs-official max |Δ| on GPU: decoder 1.4e-4, encoder 1.4e-3 (rel 2.0e-6), encoder_1 1.1e-4, physics 1.2e-5, surface towers ≤5e-6, SH transforms/vorticity/round trip ≤3.2e-5 (as on CPU); vertical CNN 1.6e-4 on GPU vs 2.2e-7 on CPU (|y|≤0.11 — the GPU conv runs with TF32 enabled by default, not investigated further); peak GPU memory 125 MB. The JAX wrapper forecast in the same smoke ran on JAX's **CPU** backend (`jax[cpu]`), so that part is still not a GPU test of the official model. Space unit tests: 19 passed (13 native + 6 wrapper), 0 skipped.
 
 ## GenCast — `weatherai.models.gencast` — **native PyTorch denoiser (official architecture; official Mini weights strict-load; network numerically checked vs official JAX) + verified sampler**
 
@@ -142,5 +151,5 @@ forecast-skill claim. GPU runs: Hugging Face Space
 | Model | Blocking point (checked 2026-10-01) |
 |---|---|
 | **NowcastNet** | Only official source is Code Ocean capsule `10.24433/CO.0832447.v1` → `codeocean.com/capsule/3935105/tree/v1`; HTTP 403 for anonymous access (also for `/download`); needs a Code Ocean login (not available to the box). No official GitHub; community re-implementations exist but are not official and were not used. |
-| **FuXi-ENS** | `tpys/FuXi-ENS` contains `inference.py`/`eval.py`/`data_util.py` that call an ONNX Runtime session on `model/fuxi_ens.onnx`; the model and sample data are on a restricted Google Drive (README: contact the authors). No PyTorch architecture is published, so there is nothing official to wrap or compare a re-implementation against. |
+| **FuXi-ENS** | **Changed in the 2026-10-01 re-check:** the weights are now obtainable without the restricted Drive — Zenodo record 10.5281/zenodo.15124541 (published 2025-04-02, CC-BY-NC-4.0, `FuXi-ENS-main.zip` 9.5 GB) contains `inference.py`/`eval.py`/`data_util.py`, `model/fuxi_ens.onnx` (109 MB graph, opset 17, 26,018 nodes, 498 initializers) + `model/fuxi_ens` (9.9 GB external weight file, 2.49 B parameters) and `data/input.nc` (648 MB; the zip also lists no `target.nc`). Inspected by HTTP-range reading only the small files (the 9.9 GB weights were **not** downloaded). Graph: inputs `input [1,2,78,721,1440]`, `step`, `hour`, `doy`; output `[1,2,78,721,1440]`; stacked `decoder.0` + `dist_p` modules with patch-embed (8×8, 1536 ch), AdaLN-conditioned attention blocks (42 in `decoder.0`, 14 in `dist_p`; `wq/wk/wv/wo` 1536×1536; MLP `fc1` 1536→8192 / `fc2` 4096→1536, i.e. probably gated — inferred from shapes only), step/hour/doy embedders, `RandomNormalLike`/`RandomUniformLike` noise ops. It is still **ONNX only — no PyTorch definition and no training code**, so a native port would be a reverse-engineering of the exported graph (windowing/mask details such as `attn_mask`, the noise injection and the c78/c88 variants would have to be inferred from 26 k nodes); **not started**, and I do not claim any parity. The GitHub README still points to the restricted Drive. |
 | **FuXi-DA** | `xuxiaoze/FuXi-DA` contains only the inference driver (`inference.py`, `read_data.py`, `result_plot.py`). It imports `assimilation_v6.AssimilationNetv6` and loads `final_cast_10_assim_model.pth` + `test_data/`, none of which are in the repo or linked (README only shows the expected directory tree; upstream issue #2 "Where can I get `model` and `test_data` dir?" is open with no reply). Only constructor hyper-parameters are visible (`bg_chans=70, embed_dim=256, obs_chans=15, obs_frames=8, depth=(1,1,1), obs_rect=(40,680,210,850)`), not the network. |

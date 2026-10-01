@@ -113,26 +113,70 @@ def smoke_graphcast(device: str) -> dict:
     }
 
 
-def smoke_neuralgcm(device: str) -> dict:
-    """Official JAX NeuralGCM 2.8 deg checkpoint. JAX device is reported separately: torch's
-    ``device`` is irrelevant here (jax[cpu] unless jax[cuda] is installed)."""
+def smoke_neuralgcm(device: str, pretrained: bool = False) -> dict:
+    """Native NeuralGCM learned components + torch SHT layer (the official JAX model is the oracle).
+
+    Always: native SHT on the 2.8 deg grid vs official dinosaur outputs (``tests/models/neuralgcm/data/sht_ref.npz``)
+    and a trainable tower fwd/bwd on ``device``. With ``pretrained``: strict-load the official checkpoint (HF/GCS)
+    into the native towers and compare with the real official tower outputs (``tower_ref.npz``). Finally the official
+    JAX wrapper forecast is run as before (JAX device reported separately)."""
+    import os
+    import pickle
+
     import jax
     import numpy as np
 
     from weatherai.models import NeuralGCM_lite
+    from weatherai.models.neuralgcm.network import EpdTower, convert_official_params
+    from weatherai.models.neuralgcm.neuralgcm import download_checkpoint
+    from weatherai.models.neuralgcm.spectral import SphericalHarmonicsGrid, SpectralGridConfig
 
+    here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    d = os.path.join(here, "tests", "models", "neuralgcm", "data")
+    res = {}
+    r = np.load(os.path.join(d, "sht_ref.npz"))
+    g = SphericalHarmonicsGrid(SpectralGridConfig.TL63()).to(device)
+    T = lambda k: torch.tensor(r[k]).to(device)
+    vo, di = g.uv_nodal_to_vor_div_modal(T("u"), T("v"))
+    u2, v2 = g.vor_div_to_uv_nodal(vo, di)
+    res["sht_to_nodal_maxerr"] = float((g.to_nodal(T("modal")).cpu().numpy() - r["to_nodal"]).__abs__().max())
+    res["sht_vor_maxerr"] = float((vo.cpu().numpy() - r["vor"]).__abs__().max())
+    res["sht_uv_roundtrip_maxerr"] = float(max(abs(u2.cpu().numpy() - r["u_rt"]).max(), abs(v2.cpu().numpy() - r["v_rt"]).max()))
+    torch.manual_seed(0)
+    tw = EpdTower(6, 3, latent=16, num_blocks=2, process_hidden_layers=1).to(device)
+    loss = tw(torch.randn(2, 6, 8, 4, device=device)).square().mean()
+    loss.backward()
+    res["tower_train_step_finite"] = bool(torch.isfinite(loss).item())
+    if pretrained:
+        path = download_checkpoint("deterministic_2_8_deg")
+        params = pickle.load(open(path, "rb"))["params"]
+        m = convert_official_params(params).to(device).eval()
+        ref = np.load(os.path.join(d, "tower_ref.npz"))
+        errs = {}
+        with torch.no_grad():
+            for i, tower in enumerate((m.decoder, m.encoder, m.encoder_1, m.physics, m.surface.land, m.surface.sea, m.surface.sea_ice)):
+                x = torch.tensor(ref[f"t{i}_x"]).to(device)
+                y = ref[f"t{i}_y"]
+                o = tower(x[:, :, None])[:, :, 0].cpu().numpy()
+                errs[f"tower{i}_maxabs"] = float(abs(o - y).max())
+                errs[f"tower{i}_relmax"] = float(abs(o - y).max() / max(1.0, abs(y).max()))
+            x = torch.tensor(ref["t7_x"]).to(device)
+            errs["vertical_cnn_maxabs"] = float(abs(m.volume_cnn(x[..., None])[..., 0].cpu().numpy() - ref["t7_y"]).max())
+        res.update(errs)
+        res["official_params_strict_loaded"] = True
     w = NeuralGCM_lite()
     ds = w.demo_data()
     out = w.forecast(ds, steps=2, step_hours=6)
     t = out.temperature
-    return {
+    res.update({
         "jax_backend": jax.default_backend(),
         "jax_devices": str(jax.devices()),
         "official_ckpt_loaded": True,
         "output_shape_ok": tuple(t.shape) == (2, 37, 128, 64),
         "all_vars_finite": bool(all(np.isfinite(v.values).all() for v in out.data_vars.values())),
         "state_evolves": bool(float(abs(t.isel(time=1) - t.isel(time=0)).mean()) > 0),
-    }
+    })
+    return res
 
 
 def smoke_gencast(device: str, pretrained: bool = False) -> dict:
@@ -365,5 +409,5 @@ if __name__ == "__main__":
     ap.add_argument("--device", default="cpu")
     ap.add_argument("--pretrained", action="store_true")
     a = ap.parse_args()
-    kw = {"pretrained": a.pretrained} if a.model in ("aurora", "aardvark", "gencast", "weathernext_cyclones") else {}
+    kw = {"pretrained": a.pretrained} if a.model in ("aurora", "aardvark", "gencast", "weathernext_cyclones", "neuralgcm") else {}
     print(json.dumps(run(a.model, a.device, **kw)))

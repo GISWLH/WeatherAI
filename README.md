@@ -20,7 +20,7 @@
 | **FuXi** (`Fuxi`) | `from weatherai.models import FuXi` | Cube embedding + U-Transformer (Swin V2) |
 | **FengWu** / `FengWu_lite` | `from weatherai.models import FengWu, FengWu_lite` | Multi-modal encode–fuse–decode; optional uncertainty |
 | **GraphCast** / `GraphCast_lite` | `from weatherai.models import GraphCast, GraphCast_lite` | Grid ↔ icosahedral mesh encode–process–decode |
-| **NeuralGCM** (wrapper, JAX) | `from weatherai.models import NeuralGCM_lite, NeuralGCMWrapper` | Thin inference wrapper over the official JAX `neuralgcm` package (not a PyTorch port) — see [NeuralGCM](#neuralgcm--wrapper-around-the-official-jax-package) |
+| **NeuralGCM** (partial native + JAX oracle) | `from weatherai.models.neuralgcm import NeuralGCMLearnedComponents, convert_official_params, SphericalHarmonicsGrid` · `from weatherai.models import NeuralGCM_lite, NeuralGCMWrapper` | Native PyTorch port of the **learned components** (4 EPD towers, surface towers, vertical CNN, learned orography/positional features; all 14.5 M official weights strict-load and match official JAX) and of the **spherical-harmonic layer**; the **dynamical core and feature builders are NOT ported**, so forecasts still run through the official-JAX wrapper (kept as oracle) — see [NeuralGCM](#neuralgcm--native-learned-components--torch-spherical-harmonics-jax-wrapper-kept-as-oracle) |
 | **GenCast** (native denoiser + sampler) | `from weatherai.models.gencast import GenCastDenoiser_from_official, GenCast_lite` | explicit PyTorch port of the official denoiser (grid2mesh GNN, k-hop mesh transformer, mesh2grid GNN); official Mini weights strict-load and match official JAX (network only) — see [GenCast](#gencast--native-pytorch-denoiser-official-architecture-official-mini-weights-load--edmdpm-solver-sampler) |
 | **Aardvark** (encoder + processor + station decoder) | `from weatherai.models.aardvark import AardvarkEncoder, AardvarkProcessor, AardvarkDecoder, AardvarkE2E` | Explicit PyTorch port of everything the official public code defines (set-conv observation encoder + ViT, forecast ViT, U-Net + set-conv + MLP station decoder); the three official checkpoints strict-load and the E2E output matches the official code on the official sample — see [Aardvark](#aardvark-weather--native-pytorch-encoder--processor--decoder) |
 | **WeatherNext Cyclones Mini** (native network + JAX oracle) | `from weatherai.models.weathernext_cyclones import WeatherNextCyclonesNet_from_official, WeatherNextCyclonesNative_lite` | Explicit PyTorch port of the official FGN network (noise-conditioned grid/mesh encoders, ball-query grid→mesh GNN, 16-layer k-hop mesh transformer, mesh→grid GNN, split decoder); official Mini weights strict-load and match official JAX; official-JAX wrapper kept as oracle; tracker/rollout/normalisation not ported — see [WN-C](#weathernext-cyclones-mini--native-pytorch-network-official-mini-weights-load-jax-wrapper-kept-as-oracle) |
@@ -81,26 +81,41 @@ dynamic/atmos-static variables, separate/modulation heads (so the fine-tuned 1.3
 wave and v1.5 checkpoints are **not** loadable; `aurora-0.25-pretrained` and `-small-pretrained` are); the 1.3 B
 checkpoint was not run; built-in normalisation stats only for the 13 standard ERA5 levels.
 
-## NeuralGCM — wrapper around the official JAX package
+## NeuralGCM — native learned components + torch spherical harmonics (JAX wrapper kept as oracle)
 
-NeuralGCM (Kochkov et al., *Nature* 2024) is JAX (a differentiable spectral dynamical core + learned
-physics). There is **no PyTorch re-implementation** here: `weatherai.models.neuralgcm` runs the official
-code/checkpoints (`pip install -e ".[neuralgcm]"` → `jax neuralgcm dinosaur`) and hands results back as
-`xarray` / `torch` tensors. Inference only (no autograd across JAX↔torch).
+NeuralGCM (Kochkov et al., *Nature* 2024) = a differentiable spectral dynamical core (`dinosaur`: moist primitive equations on
+sigma levels, IMEX-RK stepping) + learned Haiku components. **This is only partly ported:**
+
+| ported natively (`weatherai/models/neuralgcm/network.py`, `spectral.py`) | not ported (exact stuck points: docs/model_status.md) |
+|---|---|
+| `EpdTower` / `ColumnMLP` (gelu-MLP encode → 5 residual process blocks → decode; the decoder, 2 encoders and the physics tendency tower) | the dinosaur dycore: sigma-coordinate primitive equations, `imex_rk_sil3` stepper, filters, `DycoreWithPhysicsCorrector` |
+| `SurfaceEmbedding` (land/sea/sea-ice towers + mask/ice blend), `VerticalConvTower` (5 × Conv1D over levels) | tower *input feature builders* (dimensional velocity/prognostic/pressure/radiation/latitude/memory features, normalisation, input clipping/filters) and output transforms |
+| `LearnedPositionalFeatures`, `LearnedOrography` | the base orography dataset (shipped in the checkpoint's aux data), forcing interpolation, `encode/advance/decode/unroll` plumbing |
+| `SphericalHarmonicsGrid`: real SH basis, `to_modal/to_nodal`, ∇², ∂λ, cosφ∂φ, div/curl/grad, u,v ↔ vorticity/divergence | stochastic checkpoints (noise/`stochastic.py`), other resolutions |
 
 ```python
-from weatherai.models import NeuralGCM_lite, NeuralGCMWrapper
+import pickle, torch
+from weatherai.models.neuralgcm import NeuralGCMLearnedComponents, convert_official_params, SphericalHarmonicsGrid, SpectralGridConfig
 
-w = NeuralGCM_lite()            # official 2.8° deterministic checkpoint (58 MB, public GCS)
-ds = w.demo_data()              # 1 ERA5 snapshot shipped with the official package
-out = w.forecast(ds, steps=4, step_hours=6)        # xarray.Dataset, (time, level, lon, lat)
-t = NeuralGCMWrapper.to_torch(out, ["temperature"])["temperature"]   # torch.Tensor (4, 37, 128, 64)
+params = pickle.load(open("deterministic_2_8_deg.pkl", "rb"))["params"]   # official checkpoint (trusted file; needs jax to unpickle)
+net = convert_official_params(params)                 # strict: raises if any of the 121 Haiku modules / 14,518,180 weights is unused
+y = net.physics(torch.randn(2365, 128, 64))           # (192, 128, 64) physics-tendency tower on packed nodal features (C, lon, lat)
+g = SphericalHarmonicsGrid(SpectralGridConfig.TL63()) # 2.8° Gaussian grid, modal shape (127, 65)
+vor, div = g.uv_nodal_to_vor_div_modal(u, v)          # (..., lon, lat) -> (..., m, l)
 ```
 
-**Status — verified:** official checkpoint loads; forecast from the official demo snapshot is finite and
-evolves; wrapper == direct upstream call bit-for-bit; seed-independent (deterministic model); passes on the
-box CPU and on the HF Space. **Not verified:** forecast skill vs. truth, other checkpoints (1.4°/0.7°/stochastic),
-JAX on GPU (the HF run used JAX's CPU backend). Details: [docs/model_status.md](docs/model_status.md).
+Everything is differentiable and trainable (`tests/.../test_neuralgcm_native.py::TestTrainableNative`: tower training step; gradients
+through the SH layer). The official JAX wrapper (`NeuralGCM_lite()`, `NeuralGCMWrapper.forecast`) is unchanged and is the only
+path that produces forecasts.
+
+**Status — verified (numerically vs the official `neuralgcm` 1.2.3 / `dinosaur` 1.5.0, float32, official 2.8° deterministic checkpoint):**
+all 121 Haiku modules / 14,518,180 weights strict-load; real packed tower inputs from one official encode→advance→decode step of the
+demo ERA5 snapshot (24 random columns), max |native − official|: decoder 1.5e-4 (|y|≤206), encoder 1.3e-3 (|y|≤699), encoder_1 1.1e-4,
+physics 1.3e-5 (|y|≤20), surface towers ≤5.8e-6, surface blend ≤1e-5, vertical CNN 2.2e-7 (|y|≤0.11), learned orography 0.0;
+SH layer on random fields: ≤3.1e-5 for transforms, vorticity/divergence and the u,v round trip (|values| up to ~100), exact (0.0) for ∇²,
+∂λ; float64 basis orthonormal to 1e-10. **Not verified / not claimed:** any forecast produced by native code (there is none),
+whole-model parity, the dycore, feature builders, other checkpoints (1.4°/0.7°/stochastic), JAX-on-GPU. Details and results:
+[docs/model_status.md](docs/model_status.md).
 
 ## GenCast — native PyTorch denoiser (official architecture, official Mini weights load) + EDM/DPM-Solver++ sampler
 
@@ -324,7 +339,7 @@ Crossref / 出版社页面核实；“Code”为作者官方发布的仓库，�
 | Model | Paper (journal, year) | Official code / weights |
 |-------|-----------------------|-------------------------|
 | **NowcastNet** | Zhang et al., [Skilful nowcasting of extreme precipitation with NowcastNet](https://doi.org/10.1038/s41586-023-06184-4) — *Nature* 619, 2023 | [Code Ocean capsule](https://doi.org/10.24433/CO.0832447.v1) (code + pretrained weights, per the paper) |
-| **FuXi-ENS** | Zhong et al., [FuXi-ENS: A machine learning model for efficient and accurate ensemble weather prediction](https://doi.org/10.1126/sciadv.adu2854) — *Science Advances* 11, 2025 ⚠️ **not a Nature-family journal** | [tpys/FuXi-ENS](https://github.com/tpys/FuXi-ENS) (model files on a Google Drive; access limited, request from the authors) |
+| **FuXi-ENS** | Zhong et al., [FuXi-ENS: A machine learning model for efficient and accurate ensemble weather prediction](https://doi.org/10.1126/sciadv.adu2854) — *Science Advances* 11, 2025 ⚠️ **not a Nature-family journal** | [tpys/FuXi-ENS](https://github.com/tpys/FuXi-ENS) (inference scripts; the repo README still says the model is on a restricted Google Drive) · **new:** public [Zenodo 10.5281/zenodo.15124541](https://zenodo.org/records/15124541) (CC-BY-NC-4.0; ONNX model + sample input; ONNX only, no PyTorch definition) |
 | **FuXi-DA** | Xu et al., [FuXi-DA: a generalized deep learning data assimilation framework for assimilating satellite observations](https://doi.org/10.1038/s41612-025-01039-3) — *npj Climate and Atmospheric Science* 8, 2025 (Nature Portfolio) | [xuxiaoze/FuXi-DA](https://github.com/xuxiaoze/FuXi-DA) (inference driver only; the README lists `model/` and `test_data/` but they are not published — see roadmap) |
 
 Notes / 备注:
@@ -339,12 +354,12 @@ Notes / 备注:
 Roadmap checklist:
 
 - [ ] NowcastNet (precipitation nowcasting) — **blocked**: the only official source is the Code Ocean capsule (codeocean.com/capsule/3935105), which returns HTTP 403 without a login; no official GitHub; not started
-- [x] NeuralGCM (hybrid dynamical core + ML) — wrapper over official JAX package; CPU-tested (see above)
+- [~] NeuralGCM (hybrid dynamical core + ML) — **partial**: learned components + spherical-harmonic layer ported natively and numerically checked vs official JAX; dycore and feature builders not ported (official-JAX wrapper kept as oracle and is the only forecast path; see above)
 - [x] GenCast (diffusion-based ensemble forecasting) — native PyTorch denoiser (official Mini weights load, network matches official JAX to 5e-5) + verified sampler; full-model/SH-noise/normalisation pipeline not ported (see above)
 - [x] Aurora (Earth-system foundation model) — native PyTorch; official small checkpoint strict-loads, output matches official package (see above)
 - [x] Aardvark Weather — native PyTorch encoder + processor + station decoder; official checkpoints strict-load and E2E matches official code on the official sample (data loaders / training scripts not ported)
 - [x] WeatherNext Cyclones / WN-C (tropical cyclone ensembles) — native PyTorch network (official Mini weights strict-load; matches official JAX ForwardPass 2e-12 in float64 / 3e-3 in float32 at trained size); JAX wrapper kept as oracle; tracker/rollout/normalisation not ported
-- [ ] FuXi-ENS (ensemble forecasting) — **blocked**: official repo has inference scripts only; model (`fuxi_ens.onnx`) and sample data are on a restricted Google Drive (request from the authors); no PyTorch definition published
+- [ ] FuXi-ENS (ensemble forecasting) — **not ported; weights now obtainable (changed 2026-10-01 re-check)**: public Zenodo record 10.5281/zenodo.15124541 (CC-BY-NC-4.0, 9.5 GB zip: `fuxi_ens.onnx` 109 MB graph + 9.9 GB external weights, `input.nc`, inference scripts). Still ONNX-only (no PyTorch definition), so a native port would be a reverse-engineering of a 26k-node, 2.49 B-parameter graph (not started); the repo README still points to the restricted Drive
 - [ ] FuXi-DA (satellite data assimilation) — **blocked**: `model/assimilation_v6.py` and `final_cast_10_assim_model.pth` + test data are not in the repo and not linked anywhere (open upstream issue xuxiaoze/FuXi-DA#2 asks for them, unanswered); only the inference driver is public, so the architecture cannot be reproduced or verified
 
 ## Disclaimer

@@ -1,4 +1,4 @@
-"""Thin wrapper around Google's official **JAX** NeuralGCM (not a PyTorch re-implementation).
+"""Thin wrapper around Google's official **JAX** NeuralGCM (the oracle; the native PyTorch learned components are in network.py, spectral.py).
 
 NeuralGCM (Kochkov et al., *Nature* 632, 2024) couples a differentiable spectral dynamical core
 (``dinosaur``: primitive equations on sigma levels, spherical-harmonic transforms) with learned
