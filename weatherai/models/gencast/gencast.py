@@ -1,29 +1,23 @@
-"""GenCast-lite: a small **PyTorch re-implementation** of the GenCast diffusion forecaster.
+"""GenCast: EDM diffusion wrapper + DPM-Solver++ 2S sampler around a **native PyTorch port of the official denoiser**.
 
-GenCast (Price et al., *Nature* 637, 2025) is a conditional diffusion model (Karras et al.
-"EDM" framework) whose denoiser is a GraphCast-style grid→mesh→grid network with a mesh
-transformer processor, conditioned on the noise level. The official code (JAX/Haiku) lives in
-``google-deepmind/weathernext`` (``weathernext1_gen``); its weights are ``.npz`` Haiku parameters.
+GenCast (Price et al., *Nature* 637, 2025) is a conditional diffusion model (Karras et al. "EDM")
+whose denoiser is a GraphCast-style grid→mesh→grid network with a 16-layer k-hop mesh transformer,
+conditioned on the noise level. Official code (JAX/Haiku): ``google-deepmind/weathernext``
+(``weathernext1_gen``).
 
-What this module is
--------------------
-* EDM preconditioning ``D = c_skip·x + c_out·F(c_in·x, σ)``, loss weighting ``c_out^-2``,
-  noise-level schedule (``rho`` quantiles) and the **DPM-Solver++ 2S sampler with stochastic
-  churn**, written from the official source (``denoiser`` / ``gencast`` / ``samplers_utils`` /
-  ``dpm_solver_plus_plus_2s``). The sampler and schedules are checked numerically against the
-  official JAX code (see ``tests/models/gencast`` and ``scripts/gencast_sampler_reference.py``).
-* A *small* denoiser network ``DenoiserNet`` in the same spirit as the official one (noise-level
-  Fourier-MLP encoding → conditional LayerNorm; grid2mesh GNN → mesh transformer with k-hop
-  attention mask → mesh2grid GNN), built on WeatherAI's GraphCast graphs. Random init.
+* :mod:`weatherai.models.gencast.denoiser` — explicit ``nn.Module`` port of the official denoiser
+  (noise Fourier-MLP, grid2mesh GNN, mesh transformer, mesh2grid GNN). Parameter names mirror the Haiku
+  names; ``GenCastDenoiser_from_official`` loads the official ``.npz`` strictly. Numerically checked
+  against the official JAX denoiser *with the official GenCast-1p0deg-Mini weights* (see
+  ``tests/models/gencast`` and ``docs/model_status.md`` for the exact scope).
+* This module — EDM preconditioning ``D = c_skip·x + c_out·F(c_in·x, σ)``, loss weighting, noise-level
+  schedule and the DPM-Solver++ 2S sampler with stochastic churn (checked against the official JAX
+  sampler with a toy denoiser), plus ``DenoiserNet``/``GenCast_lite``: a config-driven small instance of
+  the *same* native architecture for training experiments (random init).
 
-What it is NOT
---------------
-* Not weight-compatible with the official checkpoints and not numerically equal to the official
-  denoiser network (different layer layout, conditioning details, no banded sparse attention, no
-  per-variable normalisation / forcings pipeline). **No official weights are loaded.**
-* Noise is i.i.d. Gaussian on the grid, not the official spherical-harmonic isotropic white noise.
-* Targets are generic ``(B, C, H, W)`` tensors (residual to the previous state in normalised units);
-  there is no ERA5 data pipeline.
+Not covered: sampling noise is i.i.d. Gaussian on the grid, not the official spherical-harmonic
+isotropic white noise (needs the dinosaur SHT); no ERA5 normalisation/NaN-cleaning/forcing pipeline
+(``InputsAndResiduals``); no end-to-end 12-step ensemble comparison against the official model.
 """
 from __future__ import annotations
 
@@ -36,7 +30,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from ..graphcast.mesh import build_graphs
 
 # --------------------------------------------------------------------------- schedules (official math)
 
@@ -153,86 +146,15 @@ def dpm_solver_pp_2s_sample(
 # --------------------------------------------------------------------------- denoiser network
 
 
-def fourier_features(values: torch.Tensor, base_period: float, num_frequencies: int) -> torch.Tensor:
-    """sin/cos features at integer multiples of 1/base_period (official ``fourier_features``)."""
-    freqs = torch.arange(1, num_frequencies + 1, dtype=values.dtype, device=values.device) / base_period
-    ang = 2 * math.pi * freqs
-    v = values[..., None] * ang
-    return torch.cat([torch.sin(v), torch.cos(v)], dim=-1)
-
-
-class _CondLN(nn.Module):
-    """LayerNorm whose scale/offset come from the noise-level encoding (norm conditioning)."""
-
-    def __init__(self, dim: int, cond_dim: int):
-        super().__init__()
-        self.norm = nn.LayerNorm(dim, elementwise_affine=False)
-        self.to_so = nn.Linear(cond_dim, 2 * dim)
-        nn.init.zeros_(self.to_so.weight)
-        nn.init.zeros_(self.to_so.bias)
-
-    def forward(self, x: torch.Tensor, cond: torch.Tensor) -> torch.Tensor:  # x (B,N,D) cond (B,Dc)
-        s, o = self.to_so(cond).unsqueeze(1).chunk(2, dim=-1)
-        return self.norm(x) * (1 + s) + o
-
-
-class _CMLP(nn.Module):
-    def __init__(self, i: int, o: int, h: int, cond_dim: int, ln: bool = True):
-        super().__init__()
-        self.l1, self.l2 = nn.Linear(i, h), nn.Linear(h, o)
-        self.ln = _CondLN(o, cond_dim) if ln else None
-
-    def forward(self, x, cond):
-        y = self.l2(F.silu(self.l1(x)))
-        return self.ln(y, cond) if self.ln is not None else y
-
-
-def _seg_sum(src: torch.Tensor, index: torch.Tensor, n: int) -> torch.Tensor:
-    out = src.new_zeros((src.shape[0], n) + src.shape[2:])
-    return out.index_add_(1, index, src)
-
-
-class _Bipartite(nn.Module):
-    """One message-passing step src→dst with conditioned MLPs (GraphCast-style residual deltas)."""
-
-    def __init__(self, d: int, cond_dim: int, update_src: bool):
-        super().__init__()
-        self.edge = _CMLP(3 * d, d, d, cond_dim)
-        self.dst = _CMLP(2 * d, d, d, cond_dim)
-        self.src = _CMLP(d, d, d, cond_dim) if update_src else None
-
-    def forward(self, src, dst, e, s_idx, r_idx, cond):
-        de = self.edge(torch.cat([e, src[:, s_idx], dst[:, r_idx]], -1), cond)
-        agg = _seg_sum(de, r_idx, dst.shape[1])
-        dst = dst + self.dst(torch.cat([dst, agg], -1), cond)
-        if self.src is not None:
-            src = src + self.src(src, cond)
-        return src, dst, e + de
-
-
-class _MeshTransformerBlock(nn.Module):
-    def __init__(self, d: int, heads: int, ffw: int, cond_dim: int):
-        super().__init__()
-        assert d % heads == 0
-        self.h = heads
-        self.ln1, self.ln2 = _CondLN(d, cond_dim), _CondLN(d, cond_dim)
-        self.qkv = nn.Linear(d, 3 * d)
-        self.proj = nn.Linear(d, d)
-        self.ff = nn.Sequential(nn.Linear(d, ffw), nn.GELU(), nn.Linear(ffw, d))
-
-    def forward(self, x, cond, mask):
-        B, N, D = x.shape
-        q, k, v = self.qkv(self.ln1(x, cond)).view(B, N, 3, self.h, D // self.h).permute(2, 0, 3, 1, 4)
-        a = F.scaled_dot_product_attention(q, k, v, attn_mask=mask)  # mask: (N,N) bool, True = attend
-        x = x + self.proj(a.transpose(1, 2).reshape(B, N, D))
-        return x + self.ff(self.ln2(x, cond))
-
-
 class DenoiserNet(nn.Module):
-    """Raw network F(c_in·x_noisy, cond, σ) → same shape as the target.
+    """``(B,C,H,W)`` adapter around the native official-architecture :class:`GenCastDenoiser`.
 
-    ``forward(noisy, cond, sigma)``: ``noisy`` (B, C, H, W), ``cond`` (B, Cc, H, W) conditioning
-    channels (previous states / forcings, already stacked), ``sigma`` (B,) *raw* noise level.
+    ``forward(noisy, cond, sigma)`` stacks ``[cond ‖ noisy]`` (the official order is inputs ‖ forcings ‖
+    noisy targets) into node features, runs the explicit grid2mesh GNN → k-hop mesh transformer →
+    mesh2grid GNN of :mod:`.denoiser` and returns the raw (un-preconditioned) prediction.
+    Every size is a config argument, so the architecture can be modified and retrained freely; with
+    the official config (+ :func:`GenCastDenoiser_from_official`) the identical module runs the official
+    weights.
     """
 
     def __init__(
@@ -245,66 +167,42 @@ class DenoiserNet(nn.Module):
         transformer_layers: int = 2,
         num_heads: int = 4,
         attention_k_hop: int = 4,
+        ffw_hidden: Optional[int] = None,
+        hidden_layers: int = 1,
+        radius_query_fraction_edge_length: float = 0.6,
+        attention_type: str = "dense",
+        grid_lat: Optional[Sequence[float]] = None,
+        grid_lon: Optional[Sequence[float]] = None,
+        noise_out: Tuple[int, int] = (32, 16),
         noise_base_period: float = 16.0,
         noise_freqs: int = 32,
-        noise_out: Tuple[int, int] = (32, 16),
     ):
         super().__init__()
+        from .denoiser import DenoiserConfig, GenCastDenoiser, SparseTransformerConfig
+        from ..graphcast.mesh import default_grid_lat_lon
+
         self.img_size = tuple(img_size)
         self.out_channels, self.cond_channels = out_channels, cond_channels
-        self.noise_base_period, self.noise_freqs = noise_base_period, noise_freqs
-        g = build_graphs(img_size=self.img_size, mesh_level=mesh_level, use_multi_mesh=False)
-        self.Nm, self.Ng = g.mesh_nodes.shape[0], g.grid_nodes.shape[0]
-        t = lambda a, dt: torch.as_tensor(a, dtype=dt)
-        for k in ("g2m", "mesh", "m2g"):
-            self.register_buffer(f"{k}_s", t(getattr(g, f"{k}_senders"), torch.long), persistent=False)
-            self.register_buffer(f"{k}_r", t(getattr(g, f"{k}_receivers"), torch.long), persistent=False)
-            self.register_buffer(f"{k}_ea", t(getattr(g, f"{k}_edge_attr"), torch.float32), persistent=False)
-        self.register_buffer("grid_nf", t(g.grid_node_features, torch.float32), persistent=False)
-        self.register_buffer("mesh_nf", t(g.mesh_node_features, torch.float32), persistent=False)
-        # k-hop attention mask on the mesh graph (official uses banded sparse attention, k-hop).
-        A = torch.eye(self.Nm, dtype=torch.bool)
-        A[self.mesh_s, self.mesh_r] = True
-        A[self.mesh_r, self.mesh_s] = True
-        M, Af = A.clone(), A.float()
-        for _ in range(attention_k_hop - 1):
-            M = (M.float() @ Af > 0)
-        self.register_buffer("attn_mask", M, persistent=False)
-
-        dc = noise_out[-1]
-        layers, i = [], 2 * noise_freqs
-        for j, o in enumerate(noise_out):
-            layers += [nn.Linear(i, o)] + ([nn.GELU()] if j < len(noise_out) - 1 else [])
-            i = o
-        self.noise_mlp = nn.Sequential(*layers)
-
-        D, nf, ef = latent, self.grid_nf.shape[1], self.g2m_ea.shape[1]
-        self.grid_embed = _CMLP(out_channels + cond_channels + nf, D, D, dc)
-        self.mesh_embed = _CMLP(nf, D, D, dc)
-        self.g2m_embed, self.mesh_e_embed, self.m2g_embed = (_CMLP(ef, D, D, dc) for _ in range(3))
-        self.g2m = _Bipartite(D, dc, update_src=True)
-        self.blocks = nn.ModuleList(_MeshTransformerBlock(D, num_heads, 2 * D, dc) for _ in range(transformer_layers))
-        self.m2g = _Bipartite(D, dc, update_src=False)
-        self.out = _CMLP(D, out_channels, D, dc, ln=False)
-
-    def noise_encoding(self, sigma: torch.Tensor) -> torch.Tensor:
-        return self.noise_mlp(fourier_features(torch.log(sigma), self.noise_base_period, self.noise_freqs))
+        if grid_lat is None or grid_lon is None:
+            grid_lat, grid_lon = default_grid_lat_lon(self.img_size)
+        cfg = DenoiserConfig(
+            transformer=SparseTransformerConfig(
+                attention_k_hop=attention_k_hop, d_model=latent, num_layers=transformer_layers, num_heads=num_heads,
+                ffw_hidden=ffw_hidden or 2 * latent, attention_type=attention_type),
+            mesh_size=mesh_level, latent_size=latent, hidden_layers=hidden_layers,
+            radius_query_fraction_edge_length=radius_query_fraction_edge_length,
+            node_output_size=out_channels, in_channels=cond_channels + out_channels,
+            noise_base_period=noise_base_period, noise_num_frequencies=noise_freqs, noise_mlp_sizes=tuple(noise_out),
+        )
+        self.net = GenCastDenoiser(cfg, np.asarray(grid_lat), np.asarray(grid_lon))
 
     def forward(self, noisy: torch.Tensor, cond: torch.Tensor, sigma: torch.Tensor) -> torch.Tensor:
         B, C, H, W = noisy.shape
         if (H, W) != self.img_size:
             raise ValueError(f"grid {(H, W)} != img_size {self.img_size}")
-        enc = self.noise_encoding(sigma.to(noisy.dtype))
-        grid_in = torch.cat([noisy, cond], 1).reshape(B, C + cond.shape[1], H * W).transpose(1, 2)
-        gnf = self.grid_nf.unsqueeze(0).expand(B, -1, -1)
-        grid = self.grid_embed(torch.cat([grid_in, gnf], -1), enc)
-        mesh = self.mesh_embed(self.mesh_nf.unsqueeze(0).expand(B, -1, -1), enc)
-        emb = lambda m, ea: m(ea.unsqueeze(0).expand(B, -1, -1), enc)
-        grid, mesh, _ = self.g2m(grid, mesh, emb(self.g2m_embed, self.g2m_ea), self.g2m_s, self.g2m_r, enc)
-        for blk in self.blocks:
-            mesh = blk(mesh, enc, self.attn_mask)
-        _, grid, _ = self.m2g(mesh, grid, emb(self.m2g_embed, self.m2g_ea), self.m2g_s, self.m2g_r, enc)
-        return self.out(grid, enc).transpose(1, 2).reshape(B, self.out_channels, H, W)
+        x = torch.cat([cond, noisy], 1).reshape(B, -1, H * W).transpose(1, 2)
+        y = self.net(x, sigma.to(noisy.dtype))
+        return y.transpose(1, 2).reshape(B, self.out_channels, H, W)
 
 
 # --------------------------------------------------------------------------- GenCast (EDM wrapper)

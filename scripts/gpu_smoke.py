@@ -135,8 +135,17 @@ def smoke_neuralgcm(device: str) -> dict:
     }
 
 
-def smoke_gencast(device: str) -> dict:
+def smoke_gencast(device: str, pretrained: bool = False) -> dict:
+    """Native GenCast denoiser: lite fwd/bwd/sample; with ``pretrained`` also the official GenCast-1p0deg-Mini
+    weights (gs://dm_graphcast, public) strict-loaded and compared with the official JAX denoiser outputs
+    stored in ``tests/models/gencast/data/denoiser_ref_small.npz`` (mesh_size=2, k_hop=3, 13x24 grid)."""
+    import os
+    import urllib.request
+
+    import numpy as np
+
     from weatherai.models import GenCast_lite
+    from weatherai.models.gencast import GenCastDenoiser_from_official, denoiser_inputs, unstack_variables
 
     torch.manual_seed(0)
     m = GenCast_lite().to(device)
@@ -146,7 +155,7 @@ def smoke_gencast(device: str) -> dict:
     loss.backward()
     m.eval()
     s = m.sample(cond, num_members=4, generator=torch.Generator(device=device).manual_seed(0))
-    return {
+    checks = {
         "params_M": round(sum(p.numel() for p in m.parameters()) / 1e6, 3),
         "loss_finite": bool(torch.isfinite(loss)),
         "backward_finite": all(torch.isfinite(p.grad).all() for p in m.parameters() if p.grad is not None),
@@ -154,6 +163,37 @@ def smoke_gencast(device: str) -> dict:
         "sample_finite": bool(torch.isfinite(s).all()),
         "members_differ": bool(s.std(0).mean() > 0),
     }
+    if not pretrained:
+        return checks
+    ck = "/tmp/gencast_mini.npz"
+    if not os.path.exists(ck):
+        urllib.request.urlretrieve("https://storage.googleapis.com/dm_graphcast/gencast/params/GenCast%201p0deg%20Mini%20%3C2019.npz", ck)
+    here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    r = np.load(os.path.join(here, "tests", "models", "gencast", "data", "denoiser_ref_small.npz"))
+    grp = lambda tag: {k.split("/", 1)[1]: r[k] for k in r.files if k.startswith(tag + "/")}  # noqa: E731
+    shape = (len(r["lat"]), len(r["lon"]))
+    tmpl = {k: ((1, 13) if r["out/" + k].ndim == 5 else (1,)) for k in r["target_variables"]}
+
+    def errs(attention_type):
+        net = GenCastDenoiser_from_official(ck, r["lat"], r["lon"], mesh_size=int(r["mesh_size"]),
+                                            attention_k_hop=int(r["k_hop"]), attention_type=attention_type).to(device)
+        x = denoiser_inputs(grp("inputs"), grp("forcings"), grp("noisy_targets"), shape).to(device)
+        with torch.no_grad():
+            y = net(x, torch.from_numpy(r["noise_levels"]).to(device))
+        out = unstack_variables(y, tmpl, shape)
+        return max(float(np.abs(out[k].cpu().numpy() - r["out/" + k]).max()) for k in tmpl)
+
+    checks["official_weights_strict_load"] = True
+    for att in ("dense", "triblockdiag"):
+        checks[f"max_abs_err_vs_official_jax_{att}_default_tf32"] = errs(att)
+    old = (torch.backends.cudnn.allow_tf32, torch.backends.cuda.matmul.allow_tf32)
+    torch.backends.cudnn.allow_tf32 = torch.backends.cuda.matmul.allow_tf32 = False
+    e = {att: errs(att) for att in ("dense", "triblockdiag")}
+    torch.backends.cudnn.allow_tf32, torch.backends.cuda.matmul.allow_tf32 = old
+    for att, v in e.items():
+        checks[f"max_abs_err_vs_official_jax_{att}_tf32_off"] = v
+        checks[f"{att}_matches_official_atol_2e-4_tf32_off"] = bool(v < 2e-4)
+    return checks
 
 
 def smoke_aardvark(device: str, pretrained: bool = False) -> dict:
@@ -254,5 +294,5 @@ if __name__ == "__main__":
     ap.add_argument("--device", default="cpu")
     ap.add_argument("--pretrained", action="store_true")
     a = ap.parse_args()
-    kw = {"pretrained": a.pretrained} if a.model in ("aurora", "aardvark") else {}
+    kw = {"pretrained": a.pretrained} if a.model in ("aurora", "aardvark", "gencast") else {}
     print(json.dumps(run(a.model, a.device, **kw)))

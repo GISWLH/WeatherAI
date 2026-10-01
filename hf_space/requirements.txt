@@ -9,3 +9,5 @@ microsoft-aurora
 jax
 neuralgcm
 git+https://github.com/neuralgcm/dinosaur.git
+trimesh
+rtree

@@ -92,9 +92,9 @@ class TestGenCastLite(unittest.TestCase):
 
     def test_few_train_steps_reduce_loss_on_fixed_batch(self):
         m = GenCast_lite()
-        opt = torch.optim.Adam(m.parameters(), lr=2e-3)
+        opt = torch.optim.Adam(m.parameters(), lr=3e-3)
         losses = []
-        for _ in range(40):
+        for _ in range(80):
             g = torch.Generator().manual_seed(0)  # fixed noise/sigma -> loss is a deterministic function of weights
             opt.zero_grad()
             loss = m.loss(self.tgt, self.cond, generator=g)

@@ -21,7 +21,7 @@
 | **FengWu** / `FengWu_lite` | `from weatherai.models import FengWu, FengWu_lite` | Multi-modal encode–fuse–decode; optional uncertainty |
 | **GraphCast** / `GraphCast_lite` | `from weatherai.models import GraphCast, GraphCast_lite` | Grid ↔ icosahedral mesh encode–process–decode |
 | **NeuralGCM** (wrapper, JAX) | `from weatherai.models import NeuralGCM_lite, NeuralGCMWrapper` | Thin inference wrapper over the official JAX `neuralgcm` package (not a PyTorch port) — see [NeuralGCM](#neuralgcm--wrapper-around-the-official-jax-package) |
-| **GenCast_lite** (re-implementation) | `from weatherai.models import GenCast, GenCast_lite` | PyTorch EDM diffusion + DPM-Solver++ 2S sampler (verified vs official JAX) with a small random-init denoiser; no official weights — see [GenCast](#gencast_lite--pytorch-re-implementation-diffusion-sampler-verified-vs-official-jax) |
+| **GenCast** (native denoiser + sampler) | `from weatherai.models.gencast import GenCastDenoiser_from_official, GenCast_lite` | explicit PyTorch port of the official denoiser (grid2mesh GNN, k-hop mesh transformer, mesh2grid GNN); official Mini weights strict-load and match official JAX (network only) — see [GenCast](#gencast--native-pytorch-denoiser-official-architecture-official-mini-weights-load--edmdpm-solver-sampler) |
 | **Aardvark** (encoder + processor + station decoder) | `from weatherai.models.aardvark import AardvarkEncoder, AardvarkProcessor, AardvarkDecoder, AardvarkE2E` | Explicit PyTorch port of everything the official public code defines (set-conv observation encoder + ViT, forecast ViT, U-Net + set-conv + MLP station decoder); the three official checkpoints strict-load and the E2E output matches the official code on the official sample — see [Aardvark](#aardvark-weather--native-pytorch-encoder--processor--decoder) |
 | **WeatherNext Cyclones Mini** (wrapper, JAX) | `from weatherai.models import WeatherNextCyclones_lite` | Thin inference wrapper over the official JAX `weathernext` package (Python ≥3.12; not a PyTorch port; tracker not wrapped) — see [WN-C](#weathernext-cyclones-mini--wrapper-around-the-official-jax-package) |
 | **Aurora** (native PyTorch) | `from weatherai.models import Aurora, Aurora_lite, Aurora_small` | Explicit Perceiver encoder → Swin-3D U-Net → Perceiver decoder; official small ckpt strict-loads and matches the official package bit-for-bit on the tested inputs — see [Aurora](#aurora--native-pytorch-implementation) |
@@ -102,28 +102,51 @@ evolves; wrapper == direct upstream call bit-for-bit; seed-independent (determin
 box CPU and on the HF Space. **Not verified:** forecast skill vs. truth, other checkpoints (1.4°/0.7°/stochastic),
 JAX on GPU (the HF run used JAX's CPU backend). Details: [docs/model_status.md](docs/model_status.md).
 
-## GenCast_lite — PyTorch re-implementation (diffusion sampler verified vs official JAX)
+## GenCast — native PyTorch denoiser (official architecture, official Mini weights load) + EDM/DPM-Solver++ sampler
 
-GenCast (Price et al., *Nature* 2025) is a conditional EDM diffusion model with a GraphCast-style mesh-transformer
-denoiser; official code is JAX (`google-deepmind/weathernext`). `weatherai.models.gencast` is a **PyTorch re-implementation
-of the diffusion machinery plus a small random-init denoiser — not a wrapper, and no official weights.**
+GenCast (Price et al., *Nature* 2025) is a conditional EDM diffusion model whose denoiser is a GraphCast-style
+grid→mesh→grid network with a 16-layer k-hop mesh transformer; official code is JAX (`google-deepmind/weathernext`).
+`weatherai.models.gencast` contains explicit `nn.Module`s of the **official denoiser** (parameter names mirror the Haiku names)
+plus the EDM wrapper / DPM-Solver++ 2S sampler. No wrapper around JAX is involved at runtime.
+
+| file | contents |
+|---|---|
+| `denoiser.py` | `FourierFeaturesMLP` (noise-level encoder), `LinearNormConditioning`, `ConditionedMLP` (Linear→swish→Linear→LN→cond-affine), `Grid2MeshGNN`, `MeshTransformer` (+ `MeshAttention`: dense masked or banded tri-block-diagonal k-hop attention), `Mesh2GridGNN`, `GenCastDenoiser`, `convert_official_params`, `GenCastDenoiser_from_official`, channel stacking helpers |
+| `graphs.py` | grid2mesh radius graph, finest-mesh banded (reverse Cuthill-McKee) permutation, mesh2grid containing-triangle graph, k-hop mask (re-uses `graphcast.mesh`) |
+| `gencast.py` | EDM preconditioning/loss, noise schedule, DPM-Solver++ 2S + churn sampler, `DenoiserNet` (config-driven adapter), `GenCast`, `GenCast_lite` |
 
 ```python
-import torch
-from weatherai.models import GenCast_lite
+import numpy as np, torch
+from weatherai.models.gencast import (GenCast_lite, GenCastDenoiser_from_official, denoiser_inputs, unstack_variables)
 
-m = GenCast_lite()                                  # ~0.06 M params, 16x32 grid, 6 solver steps
-cond = torch.randn(2, 8, 16, 32)                    # conditioning channels (previous states/forcings)
-target = torch.randn(2, 4, 16, 32)                  # what is diffused (e.g. normalised residual)
-loss = m.loss(target, cond); loss.backward()        # EDM-weighted denoising loss
-members = m.eval().sample(cond, num_members=4)      # (4, 2, 4, 16, 32) ensemble via DPM-Solver++ 2S + churn
+# (a) small config-driven, trainable instance of the SAME native architecture (random init)
+m = GenCast_lite(img_size=(16, 32), out_channels=4, cond_channels=8, latent=32, transformer_layers=2, mesh_level=1)
+cond, target = torch.randn(2, 8, 16, 32), torch.randn(2, 4, 16, 32)
+loss = m.loss(target, cond); loss.backward()                     # EDM-weighted denoising loss (training step)
+members = m.eval().sample(cond, num_members=4)                   # (4, 2, 4, 16, 32) DPM-Solver++ 2S + churn
+
+# (b) official GenCast-1p0deg-Mini weights (public GCS bucket, 230 MB) in the native denoiser
+#     gs://dm_graphcast/gencast/params/GenCast 1p0deg Mini <2019.npz
+lat, lon = np.linspace(-90, 90, 181), np.arange(360)             # official 1° grid
+net = GenCastDenoiser_from_official("mini.npz", lat, lon)        # strict load; mesh_size=4, 16 layers, 57.5 M params
+x = denoiser_inputs(inputs, forcings, noisy_targets, (181, 360)) # dict-of-arrays -> (B, 181*360, 264), official channel order
+raw = net(x, noise_levels)                                       # (B, Ng, 84) raw network output
 ```
 
-**Status — verified:** noise/churn schedules and the full DPM-Solver++ 2S sampler (± churn) match the official JAX sampler
-numerically (rtol 2e-4, closed-form toy denoiser, fixed noise; `scripts/gencast_sampler_reference.py`); training loss/
-backward finite; ensemble members differ; 40-step overfit sanity check. **Not verified:** the denoiser network is *not* the
-official architecture and cannot load official weights; noise is iid Gaussian (official: spherical-harmonic white noise);
-no ERA5 pipeline; no skill. Details: [docs/model_status.md](docs/model_status.md).
+**Status — verified (CPU, fp32):**
+* **Denoiser vs official JAX with the official Mini weights** (reference from the official `weathernext1_gen.denoiser.Denoiser`,
+  `scripts/gencast_denoiser_reference.py`, random inputs, official plain-`mha` attention because the TPU splash kernel is unavailable):
+  - *trained configuration* (mesh_size=4 / 2562 mesh nodes, `attention_k_hop=16`, 181×360 grid, 102 k grid→mesh edges, batch 1): max |Δ| = 4.8e-5 on all 84 outputs (output magnitude up to 22; max rel. to output max 3.2e-6);
+  - small configuration (mesh_size=2, k_hop=3, 13×24, batch 2, two noise levels): max |Δ| = 7.4e-5; banded tri-block-diagonal attention gives the same (6.9e-5).
+  - graph construction (permuted mesh, grid2mesh/mesh2grid indices and edge features) equals the official graphs (indices exactly, features ≤3e-8).
+  - all all official parameter tensors (57,492,612 weights) strict-load; unit tests use atol 2e-4 / rtol 1e-4 (small) and atol 5e-4 (full).
+* EDM coefficients, noise/churn schedules and the DPM-Solver++ 2S sampler (± churn) match the official JAX sampler (rtol 2e-4, closed-form toy denoiser, fixed noise).
+* Training step example/test: loss decreases on a fixed batch, all parameters receive gradients (`tests/models/gencast`).
+
+**Not verified / not ported:** the *network* only was compared against the official network — **not** the full model (no end-to-end official
+ensemble forecast comparison; the official `InputsAndResiduals` normalisation, NaN-cleaning of SST and the autoregressive rollout are not ported); the sampling noise
+is iid Gaussian on the grid, official is spherical-harmonic white noise (needs `dinosaur`); the 0.25° and Operational checkpoints were not run
+(same code path, larger graphs); the lite config is not a trained model. Details: [docs/model_status.md](docs/model_status.md).
 
 ## Aardvark Weather — native PyTorch encoder + processor + decoder
 
@@ -295,7 +318,7 @@ Roadmap checklist:
 
 - [ ] NowcastNet (precipitation nowcasting) — **blocked**: the only official source is the Code Ocean capsule (codeocean.com/capsule/3935105), which returns HTTP 403 without a login; no official GitHub; not started
 - [x] NeuralGCM (hybrid dynamical core + ML) — wrapper over official JAX package; CPU-tested (see above)
-- [x] GenCast (diffusion-based ensemble forecasting) — lite PyTorch re-implementation; sampler verified vs official JAX, no official weights (see above)
+- [x] GenCast (diffusion-based ensemble forecasting) — native PyTorch denoiser (official Mini weights load, network matches official JAX to 5e-5) + verified sampler; full-model/SH-noise/normalisation pipeline not ported (see above)
 - [x] Aurora (Earth-system foundation model) — native PyTorch; official small checkpoint strict-loads, output matches official package (see above)
 - [x] Aardvark Weather — native PyTorch encoder + processor + station decoder; official checkpoints strict-load and E2E matches official code on the official sample (data loaders / training scripts not ported)
 - [x] WeatherNext Cyclones / WN-C (tropical cyclone ensembles) — wrapper over official JAX package (Mini checkpoint, CPU-tested; tracker not wrapped)
