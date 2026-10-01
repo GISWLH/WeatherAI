@@ -71,23 +71,30 @@ forecast-skill claim. GPU runs: Hugging Face Space
 * Results: CPU: 10 passed (3.8 s); HF ZeroGPU (RTX PRO 6000 Blackwell MIG 2g.48gb): smoke PASS 2.0 s, peak 74 MB, Space unit
   tests 10 passed. Lite model = 0.059 M parameters.
 
-## Aardvark Weather — `weatherai.models.aardvark` — **partial: processor module only (PyTorch re-implementation, official checkpoint loads, numerically checked)**
+## Aardvark Weather — `weatherai.models.aardvark` — **native PyTorch: observation encoder + processor + station decoder (official checkpoints load, numerically checked vs official code)**
 
 * Source: <https://github.com/anna-allen/aardvark-weather-public> (CC0) at commit 8fb35a0; weights/data in the public HF *dataset*
-  repo `av555/aardvark-weather` (`trained_model/`; data licence CC-BY-NC-ND-style non-commercial, no derivatives — see the repo FAQ).
-  Official model = encoder (set-conv + ViT assimilation of raw satellite/in-situ obs) → processor (ViT, 24 h step on a 1.5° 240×121 grid,
-  24 channels) → decoder (set-conv + MLP, station forecasts).
-* **Implemented here: the processor ViT only** (`AardvarkProcessor`, parameter names identical to the official `decoder_lr.*`,
-  53.9 M params), plus the official un/normalisation step (`forecast_step`). **Not implemented:** observation encoder, station
-  decoder, end-to-end finetune, data loaders — they need the multi-terabyte observation pipeline (sample data in the repo is a CUDA-pickled
-  dict only). So *this is not the end-to-end Aardvark system* and cannot go from observations to a forecast.
-* Verified: official `processor/forecast_1/epoch_0` (648 MB) loads with `strict=True`; output matches the official
-  `ConvCNPWeather(mode="forecast", decoder="vit")` + same checkpoint on seeded random input at lead_time 0 and 1
-  (max |Δ| ≈ 2e-4 on outputs of mean |y| ≈ 0.17, CPU and GPU; reference arrays from `scripts/aardvark_processor_reference.py`, which needs a
-  one-kwarg timm shim for the official `vit.py`). Lite model (0.23 M params, 60×31 grid) fwd/bwd finite.
-* Not verified: forecast skill on real ERA5-like/Aardvark-assimilated states, multi-step use, other lead-time checkpoints (`forecast_2..10`).
-* Results: CPU: 7 tests passed (4.7 s); HF ZeroGPU (RTX PRO 6000 Blackwell MIG 2g.48gb): smoke with official checkpoint PASS 6.6 s,
-  peak 696 MB, Space unit tests 5 passed / 2 skipped (official-checkpoint tests need `AARDVARK_PROC_CKPT`).
+  repo `av555/aardvark-weather` (`trained_model/`; data licence non-commercial/no-derivatives — see the repo FAQ).
+* Implemented (explicit modules, official parameter names): `SetConv` (ConvDeepSet), `ViT` (both variants), `AardvarkProcessor`, cylindrical
+  `Unet`, `AardvarkEncoder` (ConvCNPWeather assimilation: instrument set-convs + elevation/climatology/time → 277 ch → MLP → patch-3 ViT),
+  `AardvarkDecoder` (ConvCNPWeatherOnToOff), `AardvarkE2E` (official `ConvCNPWeatherE2E.forward`, non-mutating).
+* **What upstream does not provide / what is missing here:** the official data-loading + training pipeline (`loader*.py`, `train_*.py`,
+  `trainer.py`, `finetune.py`, `e2e_train.py`) needs multi-TB local memmaps and is documented by the authors as non-runnable → not ported.
+  The U-Net's FiLM and attention branches and the `film_index` path are not ported (unused by the released checkpoints; config.pkl has `film=None`).
+  Official quirks reproduced on purpose: AMSU-B reuses the AMSU-A set-conv modules, only `ascat_setconvs` / `sc_out` length scales are stored, lon/lat
+  transposes, cylindrical pad applied along the last tensor axis. Official in-place mutation of the input dict is not reproduced (outputs identical).
+* Verified (CPU, fp32; reference arrays from the official classes + official checkpoints on the official `sample_data_final.pkl`, made by
+  `scripts/aardvark_system_reference.py` with CPU shims only; tolerance `atol=1e-5, rtol=1e-4` unless stated): encoder `encoder/epoch_96`
+  strict-load, initial state max |Δ| = 0.0; station decoder `decoder/tas/lt_1/epoch_18` strict-load, max |Δ| = 0.0; E2E encoder→processor
+  `forecast_1`→decoder: station max |Δ| = 2.9e-6 (outputs up to 5.9), gridded forecast within atol 1e-2/rtol 1e-4 (max rel err 8e-5; values up to 1.2e5 for z);
+  processor alone on random input max |Δ| ≈ 2e-4 (tolerance 1e-3 / 2e-4 abs as before). Gridded references are stride-4 sub-samples (repo size).
+* Tests: `tests/models/aardvark` (set-conv vs naive loop, NaN-as-missing, cylindrical transposed-conv shapes, param names, tiny encoder fwd/bwd,
+  tiny whole-system training step, and 3 official-checkpoint parity tests that skip without checkpoints).
+* Not verified: forecast skill vs. observations, other lead times / processors `forecast_2..10`, other decoders (`ws`, other `lt_*`), `e2e_finetuned`,
+  multi-step rollouts, any other sample than the single official one, fp16.
+* HF ZeroGPU (RTX PRO 6000 Blackwell MIG, torch 2.13+cu130) `--pretrained` smoke: PASS. All three official ckpts strict-load; processor vs official max |Δ| 2.0e-4 / 1.8e-4 (lt0/lt1).
+  System vs the CPU official reference: with TF32 off encoder-state 1.4e-5, station 5.7e-6, gridded forecast rel 9.4e-5 (PASS at 1e-3). With the GPU default (TF32 convs/matmul) errors are 4.7e-4 / 1.5e-3 / 2.1e-3, i.e. TF32 noise, not a structural difference.
+  Space unit tests: 12 passed, 5 skipped (the skips need local official ckpts).
 
 ## WeatherNext Cyclones (WN-C) — `weatherai.models.weathernext_cyclones` — **thin wrapper over official JAX code (no PyTorch port)**
 

@@ -91,14 +91,41 @@ class _PatchEmbed(nn.Module):
         return self.proj(x).flatten(2).transpose(1, 2)  # (B, N, D)
 
 
-class _ViT(nn.Module):
-    """Same parameter layout as the official ``vit.ViT`` (per_var_embedding=True)."""
+class MLP(nn.Module):
+    """Official Aardvark MLP: Linear-ReLU, ``h_layers`` x (Linear-ReLU), Linear (``mlp.0``, ``mlp.2.0`` ... keys)."""
 
-    def __init__(self, in_channels, out_channels, embed_dim, img_size, patch_size, depth, decoder_depth, num_heads, mlp_ratio):
+    def __init__(self, in_channels: int, out_channels: int, h_channels: int = 64, h_layers: int = 4):
+        super().__init__()
+        self.mlp = nn.Sequential(
+            nn.Linear(in_channels, h_channels), nn.ReLU(),
+            *[nn.Sequential(nn.Linear(h_channels, h_channels), nn.ReLU()) for _ in range(h_layers)],
+            nn.Linear(h_channels, out_channels),
+        )
+
+    def forward(self, x):
+        return self.mlp(x)
+
+
+class ViT(nn.Module):
+    """Aardvark ViT (adapted from ClimaX). Same parameter layout as the official ``vit.ViT``.
+
+    * ``per_var_embedding=True``  (processor): one patch embedding per input variable -> variable
+      aggregation (cross-attention with a learned query) -> blocks.
+    * ``per_var_embedding=False`` (encoder / "vit_assimilation"): pointwise MLP ``mlp`` (``mlp_in`` -> ``in_channels``) ->
+      a single patch embedding of all channels -> blocks. (The unused ``var_embed`` / ``var_query`` / ``var_agg``
+      parameters are kept because the official checkpoints contain them.)
+    """
+
+    def __init__(self, in_channels, out_channels, embed_dim, img_size, patch_size, depth, decoder_depth, num_heads,
+                 mlp_ratio, per_var_embedding: bool = True, mlp_in: int = 277):
         super().__init__()
         self.img_size, self.p, self.out_dim, self.in_channels = tuple(img_size), patch_size, out_channels, in_channels
+        self.per_var_embedding = per_var_embedding
         gh, gw = img_size[0] // patch_size, img_size[1] // patch_size
-        self.token_embeds = nn.ModuleList(_PatchEmbed(patch_size, 1, embed_dim) for _ in range(in_channels))
+        if per_var_embedding:
+            self.token_embeds = nn.ModuleList(_PatchEmbed(patch_size, 1, embed_dim) for _ in range(in_channels))
+        else:
+            self.token_embeds = nn.ModuleList([_PatchEmbed(patch_size, in_channels, embed_dim)])
         self.var_embed = nn.Parameter(torch.zeros(1, in_channels, embed_dim))
         self.var_query = nn.Parameter(torch.zeros(1, 1, embed_dim))
         self.var_agg = nn.MultiheadAttention(embed_dim, num_heads, batch_first=True)
@@ -114,6 +141,8 @@ class _ViT(nn.Module):
         self.apply(self._init)
         self.pos_embed.data.copy_(torch.from_numpy(sincos_pos_embed_2d(embed_dim, gh, gw)).float().unsqueeze(0))
         self.var_embed.data.copy_(torch.from_numpy(_sincos_1d(embed_dim, np.arange(in_channels))).float().unsqueeze(0))
+        if not per_var_embedding:  # created after init in the official code => default torch init
+            self.mlp = MLP(mlp_in, in_channels)
 
     @staticmethod
     def _init(m):
@@ -125,16 +154,22 @@ class _ViT(nn.Module):
             nn.init.trunc_normal_(m.weight.view(m.weight.shape[0], -1), std=0.02)
             nn.init.zeros_(m.bias)
 
-    def forward(self, x: torch.Tensor, lead_times: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, lead_times: Optional[torch.Tensor] = None) -> torch.Tensor:
         """x (B, C, H, W); lead_times (B, 1) → (B, H', W', out) with H'=H//p*p, W'=W//p*p."""
         B = x.shape[0]
-        toks = torch.stack([self.token_embeds[i](x[:, i : i + 1]) for i in range(self.in_channels)], dim=1)  # (B,V,L,D)
-        toks = toks + self.var_embed.unsqueeze(2)
-        b, _, L, D = toks.shape
-        t = toks.permute(0, 2, 1, 3).flatten(0, 1)  # (B*L, V, D)
-        q = self.var_query.expand(t.shape[0], -1, -1)
-        t, _ = self.var_agg(q, t, t)
-        t = t.squeeze(1).unflatten(0, (b, L))  # (B, L, D)
+        if lead_times is None:
+            lead_times = torch.ones(B, 1, dtype=x.dtype, device=x.device)
+        if self.per_var_embedding:
+            toks = torch.stack([self.token_embeds[i](x[:, i : i + 1]) for i in range(self.in_channels)], dim=1)  # (B,V,L,D)
+            toks = toks + self.var_embed.unsqueeze(2)
+            b, _, L, D = toks.shape
+            t = toks.permute(0, 2, 1, 3).flatten(0, 1)  # (B*L, V, D)
+            q = self.var_query.expand(t.shape[0], -1, -1)
+            t, _ = self.var_agg(q, t, t)  # aggregate the variables of every patch
+            t = t.squeeze(1).unflatten(0, (b, L))  # (B, L, D)
+        else:
+            x = self.mlp(x.permute(0, 2, 3, 1)).permute(0, 3, 1, 2)  # pointwise channel mixing 277 -> 256
+            t = self.token_embeds[0](x)  # (B, L, D)
         t = t + self.pos_embed + self.lead_time_embed(lead_times[:, 0].unsqueeze(-1)).unsqueeze(1)
         for blk in self.blocks:
             t = blk(t)
@@ -143,6 +178,9 @@ class _ViT(nn.Module):
         t = t.reshape(B, gh, gw, p, p, c)
         img = torch.einsum("nhwpqc->nchpwq", t).reshape(B, c, gh * p, gw * p)
         return img.permute(0, 2, 3, 1)
+
+
+_ViT = ViT  # backwards-compatible alias
 
 
 # ----------------------------------------------------------------------------- public module
@@ -170,7 +208,7 @@ class AardvarkProcessor(nn.Module):
         super().__init__()
         self.img_size = tuple(img_size)
         self.out_channels = out_channels
-        self.decoder_lr = _ViT(in_channels, out_channels, embed_dim, img_size, patch_size, depth, decoder_depth, num_heads, mlp_ratio)
+        self.decoder_lr = ViT(in_channels, out_channels, embed_dim, img_size, patch_size, depth, decoder_depth, num_heads, mlp_ratio)
 
     def num_parameters(self) -> int:
         return sum(p.numel() for p in self.parameters())

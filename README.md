@@ -22,7 +22,7 @@
 | **GraphCast** / `GraphCast_lite` | `from weatherai.models import GraphCast, GraphCast_lite` | Grid ↔ icosahedral mesh encode–process–decode |
 | **NeuralGCM** (wrapper, JAX) | `from weatherai.models import NeuralGCM_lite, NeuralGCMWrapper` | Thin inference wrapper over the official JAX `neuralgcm` package (not a PyTorch port) — see [NeuralGCM](#neuralgcm--wrapper-around-the-official-jax-package) |
 | **GenCast_lite** (re-implementation) | `from weatherai.models import GenCast, GenCast_lite` | PyTorch EDM diffusion + DPM-Solver++ 2S sampler (verified vs official JAX) with a small random-init denoiser; no official weights — see [GenCast](#gencast_lite--pytorch-re-implementation-diffusion-sampler-verified-vs-official-jax) |
-| **Aardvark** (processor only) | `from weatherai.models import AardvarkProcessor, AardvarkProcessor_lite` | PyTorch re-implementation of the **forecast ViT module only** (official checkpoint loads and matches official code) — *not* the end-to-end observation→forecast system; see [Aardvark](#aardvark-weather--processor-module-only) |
+| **Aardvark** (encoder + processor + station decoder) | `from weatherai.models.aardvark import AardvarkEncoder, AardvarkProcessor, AardvarkDecoder, AardvarkE2E` | Explicit PyTorch port of everything the official public code defines (set-conv observation encoder + ViT, forecast ViT, U-Net + set-conv + MLP station decoder); the three official checkpoints strict-load and the E2E output matches the official code on the official sample — see [Aardvark](#aardvark-weather--native-pytorch-encoder--processor--decoder) |
 | **WeatherNext Cyclones Mini** (wrapper, JAX) | `from weatherai.models import WeatherNextCyclones_lite` | Thin inference wrapper over the official JAX `weathernext` package (Python ≥3.12; not a PyTorch port; tracker not wrapped) — see [WN-C](#weathernext-cyclones-mini--wrapper-around-the-official-jax-package) |
 | **Aurora** (native PyTorch) | `from weatherai.models import Aurora, Aurora_lite, Aurora_small` | Explicit Perceiver encoder → Swin-3D U-Net → Perceiver decoder; official small ckpt strict-loads and matches the official package bit-for-bit on the tested inputs — see [Aurora](#aurora--native-pytorch-implementation) |
 
@@ -125,27 +125,44 @@ backward finite; ensemble members differ; 40-step overfit sanity check. **Not ve
 official architecture and cannot load official weights; noise is iid Gaussian (official: spherical-harmonic white noise);
 no ERA5 pipeline; no skill. Details: [docs/model_status.md](docs/model_status.md).
 
-## Aardvark Weather — processor module only
+## Aardvark Weather — native PyTorch encoder + processor + decoder
 
-Aardvark Weather (Allen et al., *Nature* 2025) = observation **encoder** → **processor** → station **decoder**.
-`weatherai.models.aardvark` re-implements **only the processor ViT** (24 h step, 24-channel 1.5° state on a 240×121 grid).
-The encoder (raw satellite/in-situ assimilation) and decoder are **not** implemented, so this is *not* the end-to-end model.
+Aardvark Weather (Allen et al., *Nature* 2025; official code CC0) = observation **encoder** → **processor** → station **decoder**.
+`weatherai.models.aardvark` now contains explicit ports of all three (parameter names identical to the official ones):
+
+| file | contents |
+|---|---|
+| `setconv.py` | `SetConv` (Gaussian ConvDeepSet: off-grid→grid, grid→grid, grid→off-grid, density channel) |
+| `aardvark.py` | `ViT` (per-variable patch embed + variable aggregation, or MLP + single embed), `AardvarkProcessor` (24 h step) |
+| `unet.py` | cylindrical-padding conv / transposed conv, `Down`, `Up`, `Unet` |
+| `system.py` | `AardvarkEncoder` (instrument set-convs + 277-channel stack + patch-3 ViT), `AardvarkDecoder` (U-Net → station set-conv → MLP), `AardvarkE2E`, official-checkpoint / sample loaders |
 
 ```python
 import torch
-from weatherai.models import AardvarkProcessor_lite
-from weatherai.models.aardvark import load_official_processor
+from weatherai.models.aardvark import (AardvarkProcessor_lite, AardvarkE2E, load_official_encoder, load_official_decoder,
+                                       load_official_processor, load_official_sample)
 
-m = AardvarkProcessor_lite().eval()                    # 0.23 M params, random init, 60x31 grid
-y = m(torch.randn(1, 35, 60, 31))                      # (1, 31, 60, 24): normalised 24 h tendency (24 vars)
+m = AardvarkProcessor_lite().eval()                    # 0.23 M params, random init, 60x31 grid; trainable
+y = m(torch.randn(1, 35, 60, 31))                      # (1, 31, 60, 24): normalised 24 h tendency
 
-# Official processor weights (HF dataset av555/aardvark-weather, trained_model/processor/forecast_1/epoch_0, 648 MB):
-full = load_official_processor("forecast_1/epoch_0")   # strict=True load; 53.9 M params
+# Official weights (HF dataset av555/aardvark-weather, trained_model/...) - all strict=True loads:
+enc = load_official_encoder("trained_model/encoder/epoch_96")
+dec = load_official_decoder("trained_model/decoder/tas/lt_1/epoch_18")
+proc = load_official_processor("trained_model/processor/forecast_1/epoch_0")
+task = load_official_sample("aardvark-weather-public/data/sample_data_final.pkl")     # official sample (CUDA pickle -> CPU)
+station, forecast, init_state = AardvarkE2E(enc, [proc], dec).eval()(task, return_gridded=True)  # 24 h forecast; station = normalised tas
+# every piece can be built with other sizes / depths and trained (see tests: tiny encoder+processor+decoder training step)
 ```
 
-**Status — verified:** official checkpoint strict-loads; output matches the official `ConvCNPWeather(forecast, vit)` on seeded
-random input (max |Δ| ≈ 2e-4, CPU + HF GPU). **Not verified / missing:** encoder, decoder, data pipeline, forecast skill, lead times >24 h.
-Details: [docs/model_status.md](docs/model_status.md).
+**Verified (CPU; official code run on the official sample as reference, `scripts/aardvark_system_reference.py`):**
+encoder initial state max |Δ| = 0.0 (atol 1e-5, rtol 1e-4); station decoder (tas, lt_1) max |Δ| = 0; E2E (encoder → 1 processor → decoder)
+station output max |Δ| = 2.9e-6, gridded forecast max relative error 8e-5 (values up to 1.2e5); processor on random input max |Δ| ≈ 2e-4
+(unchanged earlier check). Unit tests: set-conv vs naive loop, NaN handling, cylindrical conv shapes, parameter names, a training step on a tiny
+whole system. HF ZeroGPU: see [docs/model_status.md](docs/model_status.md).
+**Not implemented / not verified:** the official data loaders and training scripts (they depend on multi-TB local memmaps; the repo itself says they
+cannot be executed), the FiLM / attention options of the official U-Net (unused by the released weights), `e2e_finetuned` checkpoints (not loaded/tested),
+decoder checkpoints other than `tas/lt_1`, processors `forecast_2..10`, multi-step E2E, other station variables (`ws`), skill vs. observations.
+The official sample has one timestep only, so the comparison covers that single case.
 
 ## WeatherNext Cyclones Mini — wrapper around the official JAX package
 
@@ -280,7 +297,7 @@ Roadmap checklist:
 - [x] NeuralGCM (hybrid dynamical core + ML) — wrapper over official JAX package; CPU-tested (see above)
 - [x] GenCast (diffusion-based ensemble forecasting) — lite PyTorch re-implementation; sampler verified vs official JAX, no official weights (see above)
 - [x] Aurora (Earth-system foundation model) — native PyTorch; official small checkpoint strict-loads, output matches official package (see above)
-- [~] Aardvark Weather — **partial**: processor ViT only (official checkpoint loads, matches official code); encoder/decoder (observations → forecast) not implemented
+- [x] Aardvark Weather — native PyTorch encoder + processor + station decoder; official checkpoints strict-load and E2E matches official code on the official sample (data loaders / training scripts not ported)
 - [x] WeatherNext Cyclones / WN-C (tropical cyclone ensembles) — wrapper over official JAX package (Mini checkpoint, CPU-tested; tracker not wrapped)
 - [ ] FuXi-ENS (ensemble forecasting) — **blocked**: official repo has inference scripts only; model (`fuxi_ens.onnx`) and sample data are on a restricted Google Drive (request from the authors); no PyTorch definition published
 - [ ] FuXi-DA (satellite data assimilation) — **blocked**: `model/assimilation_v6.py` and `final_cast_10_assim_model.pth` + test data are not in the repo and not linked anywhere (open upstream issue xuxiaoze/FuXi-DA#2 asks for them, unanswered); only the inference driver is public, so the architecture cannot be reproduced or verified

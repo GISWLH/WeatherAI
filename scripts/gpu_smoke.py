@@ -157,7 +157,11 @@ def smoke_gencast(device: str) -> dict:
 
 
 def smoke_aardvark(device: str, pretrained: bool = False) -> dict:
+    """Lite processor fwd/bwd; with ``pretrained``: official processor / encoder / station-decoder checkpoints
+    strict-loaded and the full observation->station E2E run on the official sample, compared with outputs
+    stored from the official code (CPU reference; ``tests/models/aardvark/data``)."""
     import os
+    import urllib.request
 
     import numpy as np
 
@@ -170,23 +174,56 @@ def smoke_aardvark(device: str, pretrained: bool = False) -> dict:
     checks["lite_shape_ok"] = tuple(y.shape) == (2, 31, 60, 24)
     checks["lite_finite"] = bool(torch.isfinite(y).all())
     checks["lite_backward_finite"] = all(torch.isfinite(p.grad).all() for p in m.parameters() if p.grad is not None)
-    if pretrained:  # official processor checkpoint (HF dataset av555/aardvark-weather, 648 MB) vs. official-code reference
+    if pretrained:
         from huggingface_hub import hf_hub_download
 
-        from weatherai.models.aardvark import load_official_processor
+        from weatherai.models.aardvark import (AardvarkE2E, load_official_decoder, load_official_encoder,
+                                               load_official_processor, load_official_sample)
 
-        ck = hf_hub_download("av555/aardvark-weather", "trained_model/processor/forecast_1/epoch_0", repo_type="dataset")
-        ref = np.load(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "tests/models/aardvark/data/processor_ref.npz"))
-        full = load_official_processor(ck, strict=True, device=device).eval()
-        checks["official_ckpt_strict_load"] = True
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        dl = lambda f: hf_hub_download("av555/aardvark-weather", f, repo_type="dataset")  # noqa: E731
+        ref = np.load(os.path.join(root, "tests/models/aardvark/data/processor_ref.npz"))
+        full = load_official_processor(dl("trained_model/processor/forecast_1/epoch_0"), strict=True, device=device).eval()
+        checks["official_processor_strict_load"] = True
         g = torch.Generator().manual_seed(0)
         x = torch.randn(1, 35, 240, 121, generator=g).to(device)
         with torch.no_grad():
             out = {lt: full(x, torch.full((1, 1), float(lt), device=device))[:, ::6, ::6].float().cpu().numpy() for lt in (0, 1)}
         for lt in (0, 1):
             err = float(np.abs(out[lt] - ref[f"y_lt{lt}"]).max())
-            checks[f"max_abs_err_vs_official_lt{lt}"] = err
-            checks[f"matches_official_lt{lt}"] = bool(err < 1e-3)
+            checks[f"processor_max_abs_err_vs_official_lt{lt}"] = err
+            checks[f"processor_matches_official_lt{lt}"] = bool(err < 1e-3)
+        # encoder + decoder + E2E vs the official full system (reference made with scripts/aardvark_system_reference.py)
+        sref = np.load(os.path.join(root, "tests/models/aardvark/data/system_ref.npz"))
+        sp = "/tmp/aardvark_sample_data_final.pkl"
+        if not os.path.exists(sp):
+            urllib.request.urlretrieve("https://raw.githubusercontent.com/anna-allen/aardvark-weather-public/main/data/sample_data_final.pkl", sp)
+        task = load_official_sample(sp)
+        mv = lambda o: {k: (mv(v) if isinstance(v, dict) else [t.to(device) for t in v] if isinstance(v, list) else v.to(device)) for k, v in o.items()}  # noqa: E731
+        task = mv(task)
+        enc = load_official_encoder(dl("trained_model/encoder/epoch_96"), device=device).eval()
+        dec = load_official_decoder(dl("trained_model/decoder/tas/lt_1/epoch_18"), device=device).eval()
+        checks["official_encoder_decoder_strict_load"] = True
+        e2e = AardvarkE2E(enc, [full], dec).to(device).eval()
+
+        def sys_errs():
+            with torch.no_grad():
+                st, fc, init = e2e(task, return_gridded=True)
+                e_state = enc(task["assimilation"])
+            return {
+                "encoder_state": float(np.abs(e_state.cpu().numpy()[:, ::4, ::4] - sref["encoder_state"]).max()),
+                "e2e_station": float(np.abs(st.cpu().numpy() - sref["e2e_station"]).max()),
+                "e2e_forecast_rel": float((np.abs(fc.cpu().numpy()[:, ::4, ::4] - sref["e2e_forecast"]) / (np.abs(sref["e2e_forecast"]) + 1.0)).max()),
+            }
+
+        # reference is a CPU fp32 run; GPU conv/matmul default to TF32 on recent GPUs -> report both settings
+        checks["system_errors_vs_cpu_official_default_tf32"] = sys_errs()
+        old = (torch.backends.cudnn.allow_tf32, torch.backends.cuda.matmul.allow_tf32)
+        torch.backends.cudnn.allow_tf32 = torch.backends.cuda.matmul.allow_tf32 = False
+        errs = sys_errs()
+        torch.backends.cudnn.allow_tf32, torch.backends.cuda.matmul.allow_tf32 = old
+        checks["system_errors_vs_cpu_official_tf32_off"] = errs
+        checks["system_matches_official_tol_1e-3"] = bool(errs["encoder_state"] < 1e-3 and errs["e2e_station"] < 1e-3 and errs["e2e_forecast_rel"] < 1e-3)
     return checks
 
 
