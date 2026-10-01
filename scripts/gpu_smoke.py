@@ -94,7 +94,28 @@ def smoke_neuralgcm(device: str) -> dict:
     }
 
 
-SMOKES = {"neuralgcm": smoke_neuralgcm, "aurora": smoke_aurora, "graphcast": smoke_graphcast}
+def smoke_gencast(device: str) -> dict:
+    from weatherai.models import GenCast_lite
+
+    torch.manual_seed(0)
+    m = GenCast_lite().to(device)
+    cond = torch.randn(2, 8, 16, 32, device=device)
+    tgt = torch.randn(2, 4, 16, 32, device=device)
+    loss = m.loss(tgt, cond)
+    loss.backward()
+    m.eval()
+    s = m.sample(cond, num_members=4, generator=torch.Generator(device=device).manual_seed(0))
+    return {
+        "params_M": round(sum(p.numel() for p in m.parameters()) / 1e6, 3),
+        "loss_finite": bool(torch.isfinite(loss)),
+        "backward_finite": all(torch.isfinite(p.grad).all() for p in m.parameters() if p.grad is not None),
+        "sample_shape_ok": tuple(s.shape) == (4, 2, 4, 16, 32),
+        "sample_finite": bool(torch.isfinite(s).all()),
+        "members_differ": bool(s.std(0).mean() > 0),
+    }
+
+
+SMOKES = {"gencast": smoke_gencast, "neuralgcm": smoke_neuralgcm, "aurora": smoke_aurora, "graphcast": smoke_graphcast}
 
 
 def run(name: str, device: str, **kw) -> dict:

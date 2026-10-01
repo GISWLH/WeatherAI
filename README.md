@@ -21,6 +21,7 @@
 | **FengWu** / `FengWu_lite` | `from weatherai.models import FengWu, FengWu_lite` | Multi-modal encode–fuse–decode; optional uncertainty |
 | **GraphCast** / `GraphCast_lite` | `from weatherai.models import GraphCast, GraphCast_lite` | Grid ↔ icosahedral mesh encode–process–decode |
 | **NeuralGCM** (wrapper, JAX) | `from weatherai.models import NeuralGCM_lite, NeuralGCMWrapper` | Thin inference wrapper over the official JAX `neuralgcm` package (not a PyTorch port) — see [NeuralGCM](#neuralgcm--wrapper-around-the-official-jax-package) |
+| **GenCast_lite** (re-implementation) | `from weatherai.models import GenCast, GenCast_lite` | PyTorch EDM diffusion + DPM-Solver++ 2S sampler (verified vs official JAX) with a small random-init denoiser; no official weights — see [GenCast](#gencast_lite--pytorch-re-implementation-diffusion-sampler-verified-vs-official-jax) |
 | **Aurora** (wrapper) | `from weatherai.models import Aurora_lite, Aurora_small` | Thin wrapper over the official `microsoft-aurora` PyTorch package — see [Aurora](#aurora--wrapper-around-the-official-package) |
 
 Architecture notes:
@@ -75,6 +76,29 @@ t = NeuralGCMWrapper.to_torch(out, ["temperature"])["temperature"]   # torch.Ten
 evolves; wrapper == direct upstream call bit-for-bit; seed-independent (deterministic model); passes on the
 box CPU and on the HF Space. **Not verified:** forecast skill vs. truth, other checkpoints (1.4°/0.7°/stochastic),
 JAX on GPU (the HF run used JAX's CPU backend). Details: [docs/model_status.md](docs/model_status.md).
+
+## GenCast_lite — PyTorch re-implementation (diffusion sampler verified vs official JAX)
+
+GenCast (Price et al., *Nature* 2025) is a conditional EDM diffusion model with a GraphCast-style mesh-transformer
+denoiser; official code is JAX (`google-deepmind/weathernext`). `weatherai.models.gencast` is a **PyTorch re-implementation
+of the diffusion machinery plus a small random-init denoiser — not a wrapper, and no official weights.**
+
+```python
+import torch
+from weatherai.models import GenCast_lite
+
+m = GenCast_lite()                                  # ~0.06 M params, 16x32 grid, 6 solver steps
+cond = torch.randn(2, 8, 16, 32)                    # conditioning channels (previous states/forcings)
+target = torch.randn(2, 4, 16, 32)                  # what is diffused (e.g. normalised residual)
+loss = m.loss(target, cond); loss.backward()        # EDM-weighted denoising loss
+members = m.eval().sample(cond, num_members=4)      # (4, 2, 4, 16, 32) ensemble via DPM-Solver++ 2S + churn
+```
+
+**Status — verified:** noise/churn schedules and the full DPM-Solver++ 2S sampler (± churn) match the official JAX sampler
+numerically (rtol 2e-4, closed-form toy denoiser, fixed noise; `scripts/gencast_sampler_reference.py`); training loss/
+backward finite; ensemble members differ; 40-step overfit sanity check. **Not verified:** the denoiser network is *not* the
+official architecture and cannot load official weights; noise is iid Gaussian (official: spherical-harmonic white noise);
+no ERA5 pipeline; no skill. Details: [docs/model_status.md](docs/model_status.md).
 
 ## Install / 安装
 
@@ -171,7 +195,6 @@ Crossref / 出版社页面核实；“Code”为作者官方发布的仓库，�
 | Model | Paper (journal, year) | Official code / weights |
 |-------|-----------------------|-------------------------|
 | **NowcastNet** | Zhang et al., [Skilful nowcasting of extreme precipitation with NowcastNet](https://doi.org/10.1038/s41586-023-06184-4) — *Nature* 619, 2023 | [Code Ocean capsule](https://doi.org/10.24433/CO.0832447.v1) (code + pretrained weights, per the paper) |
-| **GenCast** | Price et al., [Probabilistic weather forecasting with machine learning](https://doi.org/10.1038/s41586-024-08252-9) — *Nature* 637, 2024 | Inside [google-deepmind/graphcast](https://github.com/google-deepmind/graphcast) (now redirects to `google-deepmind/weathernext`); code + weights per the paper |
 | **Aardvark Weather** | Allen et al., [End-to-end data-driven weather prediction](https://doi.org/10.1038/s41586-025-08897-0) — *Nature* 641, 2025 | [anna-allen/aardvark-weather-public](https://github.com/anna-allen/aardvark-weather-public) (the repo URL given in the paper, `annavaughan/...`, now redirects here) |
 | **WeatherNext Cyclones (WN-C)** | Alet et al., [Operational tropical cyclone forecasting with AI](https://doi.org/10.1038/s41586-026-10953-2) — *Nature* 657, 2026 | [google-deepmind/weathernext](https://github.com/google-deepmind/weathernext) (Apache-2.0; code + weights) |
 | **FuXi-ENS** | Zhong et al., [FuXi-ENS: A machine learning model for efficient and accurate ensemble weather prediction](https://doi.org/10.1126/sciadv.adu2854) — *Science Advances* 11, 2025 ⚠️ **not a Nature-family journal** | [tpys/FuXi-ENS](https://github.com/tpys/FuXi-ENS) (model files on a Google Drive; access limited, request from the authors) |
@@ -190,7 +213,7 @@ Roadmap checklist:
 
 - [ ] NowcastNet (precipitation nowcasting)
 - [x] NeuralGCM (hybrid dynamical core + ML) — wrapper over official JAX package; CPU-tested (see above)
-- [ ] GenCast (diffusion-based ensemble forecasting)
+- [x] GenCast (diffusion-based ensemble forecasting) — lite PyTorch re-implementation; sampler verified vs official JAX, no official weights (see above)
 - [x] Aurora (Earth-system foundation model) — wrapper over official package; smoke-tested incl. official small checkpoint (see above)
 - [ ] Aardvark Weather (end-to-end, observations → forecast)
 - [ ] WeatherNext Cyclones / WN-C (tropical cyclone ensembles)
