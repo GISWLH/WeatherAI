@@ -20,11 +20,39 @@
 | **FuXi** (`Fuxi`) | `from weatherai.models import FuXi` | Cube embedding + U-Transformer (Swin V2) |
 | **FengWu** / `FengWu_lite` | `from weatherai.models import FengWu, FengWu_lite` | Multi-modal encode–fuse–decode; optional uncertainty |
 | **GraphCast** / `GraphCast_lite` | `from weatherai.models import GraphCast, GraphCast_lite` | Grid ↔ icosahedral mesh encode–process–decode |
+| **Aurora** (wrapper) | `from weatherai.models import Aurora_lite, Aurora_small` | Thin wrapper over the official `microsoft-aurora` PyTorch package — see [Aurora](#aurora--wrapper-around-the-official-package) |
 
 Architecture notes:
 - FengWu: [docs/fengwu_specs.md](docs/fengwu_specs.md)
 - GraphCast: [docs/graphcast_specs.md](docs/graphcast_specs.md)
 - GraphCast parity vs DeepMind JAX + NVIDIA PhysicsNeMo (stage-wise): [docs/graphcast_parity.md](docs/graphcast_parity.md)
+
+## Aurora — wrapper around the official package
+
+Aurora (Bodnar et al., *Nature* 2025) is already PyTorch (MIT, [microsoft/aurora](https://github.com/microsoft/aurora)),
+so `weatherai.models.aurora` is a **wrapper, not a re-implementation**: it builds the upstream
+model and offers a plain-tensor interface. Needs `pip install -e ".[aurora]"` (→ `microsoft-aurora`).
+
+```python
+import torch
+from weatherai.models import Aurora_lite, Aurora_small
+
+# Lite: upstream architecture, 1 block/stage, ~3 M params, random init (CPU-friendly)
+m = Aurora_lite().eval()
+surf   = torch.randn(1, 2, 4, 16, 32)        # (B, T=2, [2t,10u,10v,msl], H, W)
+static = torch.randn(3, 16, 32)              # [lsm, z, slt]
+atmos  = torch.randn(1, 2, 5, 4, 16, 32)     # (B, T, [z,u,v,t,q], L=4, H, W)
+with torch.no_grad():
+    surf_next, atmos_next = m(surf, static, atmos)   # (1,4,16,32), (1,5,4,16,32)
+
+# Official small pretrained checkpoint (~450 MB download from HF microsoft/aurora)
+small = Aurora_small(pretrained=True).eval()
+```
+
+**Status — verified:** wrapper output == upstream `model(Batch)` bit-for-bit; lite forward/backward finite;
+official `aurora-0.25-small-pretrained.ckpt` strict-loads and gives finite output (CPU and HF ZeroGPU).
+**Not verified:** agreement with real forecasts/ERA5 inputs (random inputs only), multi-step rollout,
+the 1.3 B model. Details and run logs: [docs/model_status.md](docs/model_status.md).
 
 ## Install / 安装
 
@@ -123,7 +151,6 @@ Crossref / 出版社页面核实；“Code”为作者官方发布的仓库，�
 | **NowcastNet** | Zhang et al., [Skilful nowcasting of extreme precipitation with NowcastNet](https://doi.org/10.1038/s41586-023-06184-4) — *Nature* 619, 2023 | [Code Ocean capsule](https://doi.org/10.24433/CO.0832447.v1) (code + pretrained weights, per the paper) |
 | **NeuralGCM** | Kochkov et al., [Neural general circulation models for weather and climate](https://doi.org/10.1038/s41586-024-07744-y) — *Nature* 632, 2024 | [neuralgcm/neuralgcm](https://github.com/neuralgcm/neuralgcm) (models + checkpoints), [neuralgcm/dinosaur](https://github.com/neuralgcm/dinosaur) (dynamical core) |
 | **GenCast** | Price et al., [Probabilistic weather forecasting with machine learning](https://doi.org/10.1038/s41586-024-08252-9) — *Nature* 637, 2024 | Inside [google-deepmind/graphcast](https://github.com/google-deepmind/graphcast) (now redirects to `google-deepmind/weathernext`); code + weights per the paper |
-| **Aurora** | Bodnar et al., [A foundation model for the Earth system](https://doi.org/10.1038/s41586-025-09005-y) — *Nature* 641, 2025 | [microsoft/aurora](https://github.com/microsoft/aurora) (code + weights) |
 | **Aardvark Weather** | Allen et al., [End-to-end data-driven weather prediction](https://doi.org/10.1038/s41586-025-08897-0) — *Nature* 641, 2025 | [anna-allen/aardvark-weather-public](https://github.com/anna-allen/aardvark-weather-public) (the repo URL given in the paper, `annavaughan/...`, now redirects here) |
 | **WeatherNext Cyclones (WN-C)** | Alet et al., [Operational tropical cyclone forecasting with AI](https://doi.org/10.1038/s41586-026-10953-2) — *Nature* 657, 2026 | [google-deepmind/weathernext](https://github.com/google-deepmind/weathernext) (Apache-2.0; code + weights) |
 | **FuXi-ENS** | Zhong et al., [FuXi-ENS: A machine learning model for efficient and accurate ensemble weather prediction](https://doi.org/10.1126/sciadv.adu2854) — *Science Advances* 11, 2025 ⚠️ **not a Nature-family journal** | [tpys/FuXi-ENS](https://github.com/tpys/FuXi-ENS) (model files on a Google Drive; access limited, request from the authors) |
@@ -143,7 +170,7 @@ Roadmap checklist:
 - [ ] NowcastNet (precipitation nowcasting)
 - [ ] NeuralGCM (hybrid dynamical core + ML)
 - [ ] GenCast (diffusion-based ensemble forecasting)
-- [ ] Aurora (Earth-system foundation model)
+- [x] Aurora (Earth-system foundation model) — wrapper over official package; smoke-tested incl. official small checkpoint (see above)
 - [ ] Aardvark Weather (end-to-end, observations → forecast)
 - [ ] WeatherNext Cyclones / WN-C (tropical cyclone ensembles)
 - [ ] FuXi-ENS (ensemble forecasting)
