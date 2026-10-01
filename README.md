@@ -109,6 +109,46 @@ pytest tests/models/fengwu tests/models/graphcast -q
 - [ ] GraphCast checkpoint loading / full-scale parity
 - [ ] More models and evaluation utilities
 
+### Planned models / 计划加入的模型
+
+Planned additions (**not implemented yet**; no code, weights, or parity claims in this
+repo for any of them). Citations were checked against Crossref / the publisher pages;
+"code" links point to the authors' official releases, which this repo does not vendor.
+
+计划加入的模型（**尚未实现**，本仓库目前没有这些模型的代码、权重或一致性验证）。论文信息已对照
+Crossref / 出版社页面核实；“Code”为作者官方发布的仓库，本仓库不内置其代码。
+
+| Model | Paper (journal, year) | Official code / weights |
+|-------|-----------------------|-------------------------|
+| **NowcastNet** | Zhang et al., [Skilful nowcasting of extreme precipitation with NowcastNet](https://doi.org/10.1038/s41586-023-06184-4) — *Nature* 619, 2023 | [Code Ocean capsule](https://doi.org/10.24433/CO.0832447.v1) (code + pretrained weights, per the paper) |
+| **NeuralGCM** | Kochkov et al., [Neural general circulation models for weather and climate](https://doi.org/10.1038/s41586-024-07744-y) — *Nature* 632, 2024 | [neuralgcm/neuralgcm](https://github.com/neuralgcm/neuralgcm) (models + checkpoints), [neuralgcm/dinosaur](https://github.com/neuralgcm/dinosaur) (dynamical core) |
+| **GenCast** | Price et al., [Probabilistic weather forecasting with machine learning](https://doi.org/10.1038/s41586-024-08252-9) — *Nature* 637, 2024 | Inside [google-deepmind/graphcast](https://github.com/google-deepmind/graphcast) (now redirects to `google-deepmind/weathernext`); code + weights per the paper |
+| **Aurora** | Bodnar et al., [A foundation model for the Earth system](https://doi.org/10.1038/s41586-025-09005-y) — *Nature* 641, 2025 | [microsoft/aurora](https://github.com/microsoft/aurora) (code + weights) |
+| **Aardvark Weather** | Allen et al., [End-to-end data-driven weather prediction](https://doi.org/10.1038/s41586-025-08897-0) — *Nature* 641, 2025 | [anna-allen/aardvark-weather-public](https://github.com/anna-allen/aardvark-weather-public) (the repo URL given in the paper, `annavaughan/...`, now redirects here) |
+| **WeatherNext Cyclones (WN-C)** | Alet et al., [Operational tropical cyclone forecasting with AI](https://doi.org/10.1038/s41586-026-10953-2) — *Nature* 657, 2026 | [google-deepmind/weathernext](https://github.com/google-deepmind/weathernext) (Apache-2.0; code + weights) |
+| **FuXi-ENS** | Zhong et al., [FuXi-ENS: A machine learning model for efficient and accurate ensemble weather prediction](https://doi.org/10.1126/sciadv.adu2854) — *Science Advances* 11, 2025 ⚠️ **not a Nature-family journal** | [tpys/FuXi-ENS](https://github.com/tpys/FuXi-ENS) (model files on a Google Drive; access limited, request from the authors) |
+| **FuXi-DA** | Xu et al., [FuXi-DA: a generalized deep learning data assimilation framework for assimilating satellite observations](https://doi.org/10.1038/s41612-025-01039-3) — *npj Climate and Atmospheric Science* 8, 2025 (Nature Portfolio) | [xuxiaoze/FuXi-DA](https://github.com/xuxiaoze/FuXi-DA) (inference example + checkpoint) |
+
+Notes / 备注:
+- FuXi-ENS is listed once. Its published venue is *Science Advances* (AAAS), not Nature or a
+  Nature-family journal; it is kept here as a FuXi-family model of interest.
+  FuXi-ENS 仅列一次；正式发表于 *Science Advances*，不属于 Nature 系列期刊。
+- FuXi-DA is in *npj Climate and Atmospheric Science* (Nature Portfolio / Nature-family).
+  FuXi-DA 发表于 *npj Climate and Atmospheric Science*（Nature 系列）。
+- GraphCast status is unchanged: only Grid2Mesh / processor / Mesh2Grid are checked at
+  mesh levels 0–1; no official checkpoint is loaded, so there is no whole-model parity claim.
+
+Roadmap checklist:
+
+- [ ] NowcastNet (precipitation nowcasting)
+- [ ] NeuralGCM (hybrid dynamical core + ML)
+- [ ] GenCast (diffusion-based ensemble forecasting)
+- [ ] Aurora (Earth-system foundation model)
+- [ ] Aardvark Weather (end-to-end, observations → forecast)
+- [ ] WeatherNext Cyclones / WN-C (tropical cyclone ensembles)
+- [ ] FuXi-ENS (ensemble forecasting)
+- [ ] FuXi-DA (satellite data assimilation)
+
 ## Disclaimer
 
 Research / educational code. Forecast skill depends on data, training, and
