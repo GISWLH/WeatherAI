@@ -179,6 +179,42 @@ def smoke_neuralgcm(device: str, pretrained: bool = False) -> dict:
     return res
 
 
+def smoke_neuralgcm_train(device: str, pretrained: bool = False) -> dict:
+    """JAX training workflow of ``weatherai.models.neuralgcm.train`` on the Space: reports which JAX backend is used,
+    builds a modified (small) from-scratch NeuralGCM from the official gin config, runs 4 reconstruction training steps
+    on the bundled ERA5 snapshot and one dycore-rollout gradient (gradients finite / non-zero)."""
+    import pickle
+    import time
+
+    import jax
+    import numpy as np
+
+    from weatherai.models.neuralgcm import train as T
+    from weatherai.models.neuralgcm.neuralgcm import download_checkpoint
+
+    res = {"jax_version": jax.__version__, "jax_backend": jax.default_backend(), "jax_devices": str(jax.devices())}
+    ck = pickle.load(open(download_checkpoint("deterministic_2_8_deg"), "rb"))
+    t = time.time()
+    m, rep = T.build_model(ck, {"LATENT_SIZE": 64, "LAYER_SIZE": 64, "NUM_BLOCKS": 2}, params="init")
+    res["small_model_params"] = rep["n_params"]
+    res["build_seconds"] = round(time.time() - t, 1)
+    inputs, forc = T.demo_snapshot(m)
+    tg = {k: v[None] for k, v in inputs.items() if k != "sim_time"}
+    m2, h = T.fit(m, inputs, forc, tg, steps=0, n_iters=4, lr=3e-3)
+    res["loss_history"] = [round(x, 4) for x in h["loss"]]
+    res["grad_norm_min"] = round(min(h["grad_norm"]), 4)
+    res["loss_decreased"] = bool(h["loss"][-1] < h["loss"][0])
+    res["train_seconds"] = round(h["seconds"], 1)
+    sc = T.variable_scales(inputs)
+    g = jax.grad(lambda p: T.rollout_loss(p, m, inputs, forc, {k: v * 1.01 for k, v in tg.items()}, sc, steps=1))(m.params)
+    leaves = jax.tree_util.tree_leaves(g)
+    res["rollout_grad_all_finite"] = bool(all(np.isfinite(np.asarray(x)).all() for x in leaves))
+    res["rollout_grad_nonzero_leaves"] = int(sum(bool((np.asarray(x) != 0).any()) for x in leaves))
+    res["rollout_grad_leaves"] = len(leaves)
+    res["params_on_device"] = str(jax.tree_util.tree_leaves(m2.params)[0].devices())
+    return res
+
+
 def smoke_gencast(device: str, pretrained: bool = False) -> dict:
     """Native GenCast denoiser: lite fwd/bwd/sample; with ``pretrained`` also the official GenCast-1p0deg-Mini
     weights (gs://dm_graphcast, public) strict-loaded and compared with the official JAX denoiser outputs
@@ -382,7 +418,7 @@ def smoke_weathernext_cyclones(device: str, pretrained: bool = False) -> dict:
     return checks
 
 
-SMOKES = {"weathernext_cyclones": smoke_weathernext_cyclones, "aardvark": smoke_aardvark, "gencast": smoke_gencast, "neuralgcm": smoke_neuralgcm, "aurora": smoke_aurora, "graphcast": smoke_graphcast}
+SMOKES = {"neuralgcm_train": smoke_neuralgcm_train, "weathernext_cyclones": smoke_weathernext_cyclones, "aardvark": smoke_aardvark, "gencast": smoke_gencast, "neuralgcm": smoke_neuralgcm, "aurora": smoke_aurora, "graphcast": smoke_graphcast}
 
 
 def run(name: str, device: str, **kw) -> dict:

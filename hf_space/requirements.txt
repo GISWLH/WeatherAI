@@ -5,8 +5,12 @@ huggingface_hub
 scipy
 pytest
 microsoft-aurora
-# NeuralGCM (official JAX code; CPU backend on the Space)
-jax
+# NeuralGCM (official JAX code). Space runs Python 3.10 => jax<=0.6.2, which has only the cuda12 extra (no cuda13); JAX GPU is only visible inside @spaces.GPU (ZeroGPU)
+jax[cuda12]
+optax
+gcsfs
+zarr
+xarray
 neuralgcm
 git+https://github.com/neuralgcm/dinosaur.git
 trimesh

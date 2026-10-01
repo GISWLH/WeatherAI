@@ -8,6 +8,9 @@ import subprocess
 import sys
 import traceback
 
+# JAX/XLA on the ZeroGPU Blackwell slice: the GEMM autotuner aborts the process on the dycore's HIGHEST-precision
+# (dot_bf16_bf16_f32_x6) matmuls (fatal "reference (cublas)" compile failure); disable autotuning (must be set before jax is imported).
+os.environ.setdefault("XLA_FLAGS", "--xla_gpu_autotune_level=0")
 import gradio as gr
 import spaces
 import torch
@@ -16,7 +19,7 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 PKG = os.path.join(ROOT, "WeatherAI")
 sys.path.insert(0, PKG)
 
-MODELS = ["graphcast", "aurora", "neuralgcm", "gencast", "aardvark", "weathernext_cyclones"]  # extended as models are added
+MODELS = ["graphcast", "aurora", "neuralgcm", "gencast", "aardvark", "weathernext_cyclones", "neuralgcm_train"]  # extended as models are added
 
 
 def _smoke(model: str, pretrained: bool) -> str:
