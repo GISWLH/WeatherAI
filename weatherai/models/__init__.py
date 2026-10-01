@@ -4,7 +4,7 @@ from .pangu.pangu import Pangu, Pangu_lite
 from .fuxi.fuxi import Fuxi
 from .fengwu.fengwu import FengWu, FengWu_lite
 from .graphcast.graphcast import GraphCast, GraphCast_lite
-from .aurora.aurora import Aurora_lite, Aurora_small, AuroraWrapper
+from .aurora import Aurora, Aurora_lite, Aurora_small, AuroraWrapper
 from .aardvark.aardvark import AardvarkProcessor, AardvarkProcessor_lite
 from .gencast.gencast import GenCast, GenCast_lite
 from .weathernext_cyclones.wnc import WeatherNextCyclonesWrapper, WeatherNextCyclones_lite
@@ -22,6 +22,7 @@ __all__ = [
     "FengWu_lite",
     "GraphCast",
     "GraphCast_lite",
+    "Aurora",
     "AuroraWrapper",
     "Aurora_lite",
     "Aurora_small",

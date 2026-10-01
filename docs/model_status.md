@@ -7,25 +7,27 @@ forecast-skill claim. GPU runs: Hugging Face Space
 (ZeroGPU; app in `hf_space/`, deployed with `scripts/deploy_hf_space.py`; same smoke code is
 `scripts/gpu_smoke.py <model>`).
 
-## Aurora — `weatherai.models.aurora` — **wrapper** (official PyTorch code)
+## Aurora — `weatherai.models.aurora` — **native PyTorch implementation** (official package = test oracle)
 
-* Source: <https://github.com/microsoft/aurora> (MIT), cloned at commit b628d7c. Aurora is already PyTorch, so **no
-  re-implementation**: `Aurora_lite()` / `Aurora_small()` build the upstream `aurora.Aurora`
-  (`pip install microsoft-aurora`) and `AuroraWrapper.forward` converts plain tensors to the
-  upstream `Batch`.
-* `Aurora_lite()`: upstream architecture, 1 block/stage, embed 64 → 2.96 M params, random init.
-* `Aurora_small()`: upstream `AuroraSmallPretrained` config (112.8 M params);
-  `pretrained=True` loads official `aurora-0.25-small-pretrained.ckpt` (HF `microsoft/aurora`,
-  ~450 MB, public) with `strict=True`.
-* Verified: wrapper output is bit-identical to upstream `model(Batch)` (unit test); lite
-  fwd/bwd finite; official small checkpoint strict-loads and forward is finite (CPU + GPU).
-* Not verified: numerical agreement with published Aurora forecasts / real ERA5 or HRES inputs
-  (only random-normal inputs were used); only the 6 h step (no rollout); the 1.3 B
-  fine-tuned model was not run.
-* Results: CPU (box, 8 cores): lite+small smoke PASS 8.1 s. HF ZeroGPU (NVIDIA RTX PRO 6000
-  Blackwell MIG 2g.48gb, torch 2.13+cu130): smoke with official small ckpt PASS, 5.9 s,
-  peak 536 MB; Space unit tests 5 passed / 1 skipped (the skipped test needs a local ckpt path
-  via `AURORA_SMALL_CKPT`).
+* Source: <https://github.com/microsoft/aurora> (MIT), commit b628d7c. Re-implemented explicitly in
+  `weatherai/models/aurora/` (`patch_embed`, `perceiver`, `encoder`, `swin3d`, `decoder`, `aurora`); parameter names / layouts
+  follow upstream so official checkpoints load with `strict=True`. The former wrapper lives on as
+  `weatherai.models.aurora.official` (`AuroraWrapper`, `AuroraOfficial_lite/_small`), used **only** as a numerical reference.
+* `Aurora_lite()`: 1 block/stage, embed 64 → 2.96 M params, random init. `Aurora_small()`: upstream `AuroraSmallPretrained`
+  config, 112.8 M params; `pretrained=True` / `checkpoint_path=` strict-loads the official
+  `aurora-0.25-small-pretrained.ckpt`. `Aurora(...)` exposes all depth/heads/window/patch/embed settings for retraining.
+* Verified (CPU, fp32, tolerance `atol=1e-5, rtol=1e-4`; observed max |diff| = 0.0): native vs. official package with
+  identical weights/inputs: 3 random-weight configs × grids (16×32, 17×32, 20×36, 25×44, 25×44, 32×64, incl. odd-latitude
+  crop and odd patch grids), v3 lead-time embedding, window sizes (2,2,2)/(2,3,5)/(2,6,12); **official small checkpoint**
+  (strict load) on 33×64 and 65×128 inputs. Training: 25 Adam steps lower the loss ≥20% (test); all parameters receive gradients.
+* Not ported: LoRA, stochastic/ensemble mode, level-conditioned patch embeddings, dynamic / atmos-static variables,
+  separate-perceiver and modulation heads, activation checkpointing, roll-out helpers → fine-tuned 1.3 B / HRES / air-pollution /
+  wave / v1.5 checkpoints are not loadable. Not verified: skill on real data, rollouts, the 1.3 B model, fp16/bf16.
+* Results: CPU (box): `tests/models/aurora` 12 passed (7 s); smoke with official small ckpt PASS 5.1 s. **HF ZeroGPU** (NVIDIA RTX PRO 6000
+  Blackwell MIG 2g.48gb, torch 2.13+cu130): smoke PASS 8.4 s, peak 958 MB: native lite fwd/bwd finite; lite native-vs-official
+  max |diff| 0.0 / 0.0 (allclose 1e-5/1e-4 True); official small ckpt strict-loaded into the native model, native-vs-official on
+  33x64 inputs max |diff| 0.0 / 0.0 (allclose True). Space unit tests: 11 passed, 1 skipped (the skipped one needs the local
+  small ckpt path; the same parity is covered by the smoke).
 
 ## NeuralGCM — `weatherai.models.neuralgcm` — **thin wrapper over official JAX code** (no PyTorch port)
 

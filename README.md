@@ -24,39 +24,62 @@
 | **GenCast_lite** (re-implementation) | `from weatherai.models import GenCast, GenCast_lite` | PyTorch EDM diffusion + DPM-Solver++ 2S sampler (verified vs official JAX) with a small random-init denoiser; no official weights — see [GenCast](#gencast_lite--pytorch-re-implementation-diffusion-sampler-verified-vs-official-jax) |
 | **Aardvark** (processor only) | `from weatherai.models import AardvarkProcessor, AardvarkProcessor_lite` | PyTorch re-implementation of the **forecast ViT module only** (official checkpoint loads and matches official code) — *not* the end-to-end observation→forecast system; see [Aardvark](#aardvark-weather--processor-module-only) |
 | **WeatherNext Cyclones Mini** (wrapper, JAX) | `from weatherai.models import WeatherNextCyclones_lite` | Thin inference wrapper over the official JAX `weathernext` package (Python ≥3.12; not a PyTorch port; tracker not wrapped) — see [WN-C](#weathernext-cyclones-mini--wrapper-around-the-official-jax-package) |
-| **Aurora** (wrapper) | `from weatherai.models import Aurora_lite, Aurora_small` | Thin wrapper over the official `microsoft-aurora` PyTorch package — see [Aurora](#aurora--wrapper-around-the-official-package) |
+| **Aurora** (native PyTorch) | `from weatherai.models import Aurora, Aurora_lite, Aurora_small` | Explicit Perceiver encoder → Swin-3D U-Net → Perceiver decoder; official small ckpt strict-loads and matches the official package bit-for-bit on the tested inputs — see [Aurora](#aurora--native-pytorch-implementation) |
 
 Architecture notes:
 - FengWu: [docs/fengwu_specs.md](docs/fengwu_specs.md)
 - GraphCast: [docs/graphcast_specs.md](docs/graphcast_specs.md)
 - GraphCast parity vs DeepMind JAX + NVIDIA PhysicsNeMo (stage-wise): [docs/graphcast_parity.md](docs/graphcast_parity.md)
 
-## Aurora — wrapper around the official package
+## Aurora — native PyTorch implementation
 
-Aurora (Bodnar et al., *Nature* 2025) is already PyTorch (MIT, [microsoft/aurora](https://github.com/microsoft/aurora)),
-so `weatherai.models.aurora` is a **wrapper, not a re-implementation**: it builds the upstream
-model and offers a plain-tensor interface. Needs `pip install -e ".[aurora]"` (→ `microsoft-aurora`).
+`weatherai.models.aurora` re-implements Aurora (Bodnar et al., *Nature* 2025; MIT,
+[microsoft/aurora](https://github.com/microsoft/aurora)) as explicit `nn.Module`s with readable `forward()`s,
+in the style of the Pangu/FuXi code (no dependency on the `aurora` pip package):
+
+| file | contents |
+|---|---|
+| `patch_embed.py` | `LevelPatchEmbed` – per-variable 3-D patch conv over (history × P × P) |
+| `perceiver.py` | `PerceiverAttention`, `PerceiverResampler` (post-norm cross-attention + MLP) |
+| `encoder.py` | `Perceiver3DEncoder` – patch-embed surface(+static) and every level → level aggregation → + position / patch-scale / lead-time / absolute-time Fourier embeddings |
+| `swin3d.py` | `Swin3DBackbone`: `SwinStage`s of `Swin3DBlock` (shifted 3-D windows with periodic-longitude mask, AdaLN on lead time), `PatchMerging3D`, `PatchSplitting3D` (linear1 → reshape/permute → crop padding → norm → linear2) |
+| `decoder.py` | `Perceiver3DDecoder` – level de-aggregation + per-variable linear unpatchify |
+| `aurora.py` | `Aurora` (plain-tensor I/O, official normalisation statistics, `Aurora_lite`, `Aurora_small`) |
+| `official.py` | the old thin wrapper over `microsoft-aurora` – **reference oracle only** (tests / parity) |
 
 ```python
 import torch
-from weatherai.models import Aurora_lite, Aurora_small
+from weatherai.models import Aurora, Aurora_lite, Aurora_small
 
-# Lite: upstream architecture, 1 block/stage, ~3 M params, random init (CPU-friendly)
-m = Aurora_lite().eval()
-surf   = torch.randn(1, 2, 4, 16, 32)        # (B, T=2, [2t,10u,10v,msl], H, W)
-static = torch.randn(3, 16, 32)              # [lsm, z, slt]
-atmos  = torch.randn(1, 2, 5, 4, 16, 32)     # (B, T, [z,u,v,t,q], L=4, H, W)
+m = Aurora_lite().eval()                      # ~3 M params, random init, CPU friendly
+surf   = torch.randn(1, 2, 4, 16, 32) + torch.tensor([278., 0, 0, 1e5]).view(1, 1, 4, 1, 1)  # (B,T=2,[2t,10u,10v,msl],H,W)
+static = torch.randn(3, 16, 32)               # [lsm, z, slt]
+atmos  = torch.randn(1, 2, 5, 4, 16, 32)      # (B,T,[z,u,v,t,q],L=4,H,W)
 with torch.no_grad():
-    surf_next, atmos_next = m(surf, static, atmos)   # (1,4,16,32), (1,5,4,16,32)
+    surf_next, atmos_next = m(surf, static, atmos)   # physical units, +6 h
 
-# Official small pretrained checkpoint (~450 MB download from HF microsoft/aurora)
-small = Aurora_small(pretrained=True).eval()
+# fully configurable / trainable: any depths, heads, window, patch size, embed dim
+my = Aurora(embed_dim=128, encoder_depths=(2, 4, 2), decoder_depths=(2, 4, 2),
+            encoder_num_heads=(4, 8, 16), decoder_num_heads=(16, 8, 4), num_heads=4, window_size=(2, 6, 12))
+loss = (my(surf, static, atmos)[0] - surf[:, 1]).pow(2).mean(); loss.backward()   # see tests for a full training step
+
+# Official small pretrained checkpoint (~450 MB from HF microsoft/aurora), strict=True load into the native model
+small = Aurora_small(pretrained=True).eval()  # or Aurora_small(checkpoint_path="aurora-0.25-small-pretrained.ckpt")
 ```
 
-**Status — verified:** wrapper output == upstream `model(Batch)` bit-for-bit; lite forward/backward finite;
-official `aurora-0.25-small-pretrained.ckpt` strict-loads and gives finite output (CPU and HF ZeroGPU).
-**Not verified:** agreement with real forecasts/ERA5 inputs (random inputs only), multi-step rollout,
-the 1.3 B model. Details and run logs: [docs/model_status.md](docs/model_status.md).
+**Verified (numerically, vs. the official `microsoft-aurora` package at b628d7c, same weights, same inputs; fp32,
+`atol=1e-5, rtol=1e-4` – observed max abs difference was exactly 0.0 on CPU):** random-weight state-dict transfer
+`strict=True` for 3 configs (window (2,2,2)/(2,3,5)/(2,6,12), uneven depths, v3 lead-time embedding), grids
+16×32 … 32×64 incl. the odd-latitude crop (H%4==1) and patch grids that need merge-padding / split-cropping
+(25×44); the official `aurora-0.25-small-pretrained.ckpt` strict-loads into the native `Aurora_small` and
+reproduces the official output on 33×64 inputs. HF ZeroGPU results: see [docs/model_status.md](docs/model_status.md).
+Unit tests: `tests/models/aurora` (shapes, odd grids, merge/split + window helpers, param-name layout,
+25-step training demo, grads, parity).
+**Not verified / not included:** skill on real ERA5/HRES data (random inputs only), multi-step rollout;
+upstream features that are *not* ported: LoRA, stochastic/ensemble mode, level-conditioned embeddings,
+dynamic/atmos-static variables, separate/modulation heads (so the fine-tuned 1.3 B, HRES-0.1°, air-pollution,
+wave and v1.5 checkpoints are **not** loadable; `aurora-0.25-pretrained` and `-small-pretrained` are); the 1.3 B
+checkpoint was not run; built-in normalisation stats only for the 13 standard ERA5 levels.
 
 ## NeuralGCM — wrapper around the official JAX package
 
@@ -256,7 +279,7 @@ Roadmap checklist:
 - [ ] NowcastNet (precipitation nowcasting) — **blocked**: the only official source is the Code Ocean capsule (codeocean.com/capsule/3935105), which returns HTTP 403 without a login; no official GitHub; not started
 - [x] NeuralGCM (hybrid dynamical core + ML) — wrapper over official JAX package; CPU-tested (see above)
 - [x] GenCast (diffusion-based ensemble forecasting) — lite PyTorch re-implementation; sampler verified vs official JAX, no official weights (see above)
-- [x] Aurora (Earth-system foundation model) — wrapper over official package; smoke-tested incl. official small checkpoint (see above)
+- [x] Aurora (Earth-system foundation model) — native PyTorch; official small checkpoint strict-loads, output matches official package (see above)
 - [~] Aardvark Weather — **partial**: processor ViT only (official checkpoint loads, matches official code); encoder/decoder (observations → forecast) not implemented
 - [x] WeatherNext Cyclones / WN-C (tropical cyclone ensembles) — wrapper over official JAX package (Mini checkpoint, CPU-tested; tracker not wrapped)
 - [ ] FuXi-ENS (ensemble forecasting) — **blocked**: official repo has inference scripts only; model (`fuxi_ens.onnx`) and sample data are on a restricted Google Drive (request from the authors); no PyTorch definition published

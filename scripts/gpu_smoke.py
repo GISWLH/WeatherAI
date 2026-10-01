@@ -25,6 +25,9 @@ def _env(device: str) -> dict:
 
 
 def smoke_aurora(device: str, pretrained: bool = False) -> dict:
+    """Native Aurora: finite fwd/bwd of the lite model; with ``pretrained`` the official small
+    checkpoint is strict-loaded into the native model and compared with the official package
+    (reference oracle) on the same inputs and device."""
     from weatherai.models import Aurora_lite, Aurora_small
 
     checks = {}
@@ -40,21 +43,59 @@ def smoke_aurora(device: str, pretrained: bool = False) -> dict:
     m = Aurora_lite().to(device).eval()
     with torch.no_grad():
         s, a = m(*inputs(16, 32))
-    checks["lite_forward_finite"] = bool(torch.isfinite(s).all() and torch.isfinite(a).all())
-    checks["lite_params_M"] = round(sum(p.numel() for p in m.parameters()) / 1e6, 2)
+    checks["native_lite_forward_finite"] = bool(torch.isfinite(s).all() and torch.isfinite(a).all())
+    checks["native_lite_params_M"] = round(sum(p.numel() for p in m.parameters()) / 1e6, 2)
     m.train()
     s, a = m(*inputs(16, 32))
     (s.pow(2).mean() + a.pow(2).mean()).backward()
-    checks["lite_backward_finite"] = all(
+    checks["native_lite_backward_finite"] = all(
         torch.isfinite(p.grad).all() for p in m.parameters() if p.grad is not None
     )
-    if pretrained:
-        m = Aurora_small(pretrained=True).to(device).eval()  # strict official ckpt load
+    try:
+        import aurora  # noqa: F401
+        have_official = True
+    except Exception:
+        have_official = False
+    checks["official_package_available"] = have_official
+
+    if have_official:  # random-weight parity, lite config, same device
+        from weatherai.models.aurora import AuroraOfficial_lite
+
+        off = AuroraOfficial_lite().to(device).eval()
+        ours = Aurora_lite().to(device).eval()
+        ours.load_state_dict(off.core.state_dict(), strict=True)
+        x = inputs(17, 32)
         with torch.no_grad():
-            s, a = m(*inputs(32, 64))
-        checks["small_official_ckpt_strict_load"] = True
-        checks["small_official_forward_finite"] = bool(torch.isfinite(s).all() and torch.isfinite(a).all())
-        checks["small_params_M"] = round(sum(p.numel() for p in m.parameters()) / 1e6, 1)
+            so, ao = off(*x)
+            s, a = ours(*x)
+        checks["lite_parity_vs_official_max_abs"] = [float((s - so).abs().max()), float((a - ao).abs().max())]
+        checks["lite_parity_allclose_atol1e-5_rtol1e-4"] = bool(
+            torch.allclose(s, so, atol=1e-5, rtol=1e-4) and torch.allclose(a, ao, atol=1e-5, rtol=1e-4)
+        )
+    if pretrained:
+        m = Aurora_small(pretrained=True).to(device).eval()  # strict official ckpt load (native model)
+        checks["native_small_official_ckpt_strict_load"] = True
+        x = inputs(33, 64)
+        with torch.no_grad():
+            s, a = m(*x)
+        checks["native_small_forward_finite"] = bool(torch.isfinite(s).all() and torch.isfinite(a).all())
+        checks["native_small_params_M"] = round(sum(p.numel() for p in m.parameters()) / 1e6, 1)
+        if have_official:
+            import aurora as aur
+            from huggingface_hub import hf_hub_download
+            from weatherai.models.aurora import AuroraWrapper
+
+            core = aur.AuroraSmallPretrained()
+            core.load_checkpoint_local(
+                hf_hub_download("microsoft/aurora", "aurora-0.25-small-pretrained.ckpt",
+                                revision="0be7e57c685dac86b78c4a19a3ab149d13c6a3dd"), strict=True)
+            off = AuroraWrapper(core).to(device).eval()
+            with torch.no_grad():
+                so, ao = off(*x)
+            checks["small_parity_vs_official_max_abs"] = [float((s - so).abs().max()), float((a - ao).abs().max())]
+            checks["small_parity_allclose_atol1e-5_rtol1e-4"] = bool(
+                torch.allclose(s, so, atol=1e-5, rtol=1e-4) and torch.allclose(a, ao, atol=1e-5, rtol=1e-4)
+            )
     return checks
 
 
