@@ -4,3 +4,7 @@ einops
 scipy
 pytest
 microsoft-aurora
+# NeuralGCM (official JAX code; CPU backend on the Space)
+jax
+neuralgcm
+git+https://github.com/neuralgcm/dinosaur.git

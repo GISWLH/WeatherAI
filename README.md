@@ -20,6 +20,7 @@
 | **FuXi** (`Fuxi`) | `from weatherai.models import FuXi` | Cube embedding + U-Transformer (Swin V2) |
 | **FengWu** / `FengWu_lite` | `from weatherai.models import FengWu, FengWu_lite` | Multi-modal encode–fuse–decode; optional uncertainty |
 | **GraphCast** / `GraphCast_lite` | `from weatherai.models import GraphCast, GraphCast_lite` | Grid ↔ icosahedral mesh encode–process–decode |
+| **NeuralGCM** (wrapper, JAX) | `from weatherai.models import NeuralGCM_lite, NeuralGCMWrapper` | Thin inference wrapper over the official JAX `neuralgcm` package (not a PyTorch port) — see [NeuralGCM](#neuralgcm--wrapper-around-the-official-jax-package) |
 | **Aurora** (wrapper) | `from weatherai.models import Aurora_lite, Aurora_small` | Thin wrapper over the official `microsoft-aurora` PyTorch package — see [Aurora](#aurora--wrapper-around-the-official-package) |
 
 Architecture notes:
@@ -53,6 +54,27 @@ small = Aurora_small(pretrained=True).eval()
 official `aurora-0.25-small-pretrained.ckpt` strict-loads and gives finite output (CPU and HF ZeroGPU).
 **Not verified:** agreement with real forecasts/ERA5 inputs (random inputs only), multi-step rollout,
 the 1.3 B model. Details and run logs: [docs/model_status.md](docs/model_status.md).
+
+## NeuralGCM — wrapper around the official JAX package
+
+NeuralGCM (Kochkov et al., *Nature* 2024) is JAX (a differentiable spectral dynamical core + learned
+physics). There is **no PyTorch re-implementation** here: `weatherai.models.neuralgcm` runs the official
+code/checkpoints (`pip install -e ".[neuralgcm]"` → `jax neuralgcm dinosaur`) and hands results back as
+`xarray` / `torch` tensors. Inference only (no autograd across JAX↔torch).
+
+```python
+from weatherai.models import NeuralGCM_lite, NeuralGCMWrapper
+
+w = NeuralGCM_lite()            # official 2.8° deterministic checkpoint (58 MB, public GCS)
+ds = w.demo_data()              # 1 ERA5 snapshot shipped with the official package
+out = w.forecast(ds, steps=4, step_hours=6)        # xarray.Dataset, (time, level, lon, lat)
+t = NeuralGCMWrapper.to_torch(out, ["temperature"])["temperature"]   # torch.Tensor (4, 37, 128, 64)
+```
+
+**Status — verified:** official checkpoint loads; forecast from the official demo snapshot is finite and
+evolves; wrapper == direct upstream call bit-for-bit; seed-independent (deterministic model); passes on the
+box CPU and on the HF Space. **Not verified:** forecast skill vs. truth, other checkpoints (1.4°/0.7°/stochastic),
+JAX on GPU (the HF run used JAX's CPU backend). Details: [docs/model_status.md](docs/model_status.md).
 
 ## Install / 安装
 
@@ -149,7 +171,6 @@ Crossref / 出版社页面核实；“Code”为作者官方发布的仓库，�
 | Model | Paper (journal, year) | Official code / weights |
 |-------|-----------------------|-------------------------|
 | **NowcastNet** | Zhang et al., [Skilful nowcasting of extreme precipitation with NowcastNet](https://doi.org/10.1038/s41586-023-06184-4) — *Nature* 619, 2023 | [Code Ocean capsule](https://doi.org/10.24433/CO.0832447.v1) (code + pretrained weights, per the paper) |
-| **NeuralGCM** | Kochkov et al., [Neural general circulation models for weather and climate](https://doi.org/10.1038/s41586-024-07744-y) — *Nature* 632, 2024 | [neuralgcm/neuralgcm](https://github.com/neuralgcm/neuralgcm) (models + checkpoints), [neuralgcm/dinosaur](https://github.com/neuralgcm/dinosaur) (dynamical core) |
 | **GenCast** | Price et al., [Probabilistic weather forecasting with machine learning](https://doi.org/10.1038/s41586-024-08252-9) — *Nature* 637, 2024 | Inside [google-deepmind/graphcast](https://github.com/google-deepmind/graphcast) (now redirects to `google-deepmind/weathernext`); code + weights per the paper |
 | **Aardvark Weather** | Allen et al., [End-to-end data-driven weather prediction](https://doi.org/10.1038/s41586-025-08897-0) — *Nature* 641, 2025 | [anna-allen/aardvark-weather-public](https://github.com/anna-allen/aardvark-weather-public) (the repo URL given in the paper, `annavaughan/...`, now redirects here) |
 | **WeatherNext Cyclones (WN-C)** | Alet et al., [Operational tropical cyclone forecasting with AI](https://doi.org/10.1038/s41586-026-10953-2) — *Nature* 657, 2026 | [google-deepmind/weathernext](https://github.com/google-deepmind/weathernext) (Apache-2.0; code + weights) |
@@ -168,7 +189,7 @@ Notes / 备注:
 Roadmap checklist:
 
 - [ ] NowcastNet (precipitation nowcasting)
-- [ ] NeuralGCM (hybrid dynamical core + ML)
+- [x] NeuralGCM (hybrid dynamical core + ML) — wrapper over official JAX package; CPU-tested (see above)
 - [ ] GenCast (diffusion-based ensemble forecasting)
 - [x] Aurora (Earth-system foundation model) — wrapper over official package; smoke-tested incl. official small checkpoint (see above)
 - [ ] Aardvark Weather (end-to-end, observations → forecast)

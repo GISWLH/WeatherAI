@@ -72,7 +72,29 @@ def smoke_graphcast(device: str) -> dict:
     }
 
 
-SMOKES = {"aurora": smoke_aurora, "graphcast": smoke_graphcast}
+def smoke_neuralgcm(device: str) -> dict:
+    """Official JAX NeuralGCM 2.8 deg checkpoint. JAX device is reported separately: torch's
+    ``device`` is irrelevant here (jax[cpu] unless jax[cuda] is installed)."""
+    import jax
+    import numpy as np
+
+    from weatherai.models import NeuralGCM_lite
+
+    w = NeuralGCM_lite()
+    ds = w.demo_data()
+    out = w.forecast(ds, steps=2, step_hours=6)
+    t = out.temperature
+    return {
+        "jax_backend": jax.default_backend(),
+        "jax_devices": str(jax.devices()),
+        "official_ckpt_loaded": True,
+        "output_shape_ok": tuple(t.shape) == (2, 37, 128, 64),
+        "all_vars_finite": bool(all(np.isfinite(v.values).all() for v in out.data_vars.values())),
+        "state_evolves": bool(float(abs(t.isel(time=1) - t.isel(time=0)).mean()) > 0),
+    }
+
+
+SMOKES = {"neuralgcm": smoke_neuralgcm, "aurora": smoke_aurora, "graphcast": smoke_graphcast}
 
 
 def run(name: str, device: str, **kw) -> dict:
