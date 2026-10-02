@@ -18,7 +18,8 @@ class TestRateHelpers(unittest.TestCase):
         r = P.precip_rate_mm_per_hour({P.PRECIP_KEY: cum})
         self.assertEqual(r.shape, (4, 3, 2))
         np.testing.assert_allclose(r, 0.1, rtol=1e-5)
-        r2 = P.precip_rate_mm_per_hour({P.PRECIP_KEY: cum[::2]}, hours=2)
+        cum2 = np.cumsum(np.full((3, 1, 3, 2), 2e-4, np.float32), axis=0)
+        r2 = P.precip_rate_mm_per_hour({P.PRECIP_KEY: cum2}, hours=2)
         np.testing.assert_allclose(r2, 0.1, rtol=1e-5)
 
 

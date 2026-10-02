@@ -786,7 +786,56 @@ def smoke_ace2(device: str, pretrained: bool = False) -> dict:
     return res
 
 
-SMOKES = {"ace2": smoke_ace2, "arches": smoke_arches, "stormcast": smoke_stormcast, "fuxi_ens": smoke_fuxi_ens, "neuralgcm_train": smoke_neuralgcm_train, "weathernext_cyclones": smoke_weathernext_cyclones, "aardvark": smoke_aardvark, "gencast": smoke_gencast, "neuralgcm": smoke_neuralgcm, "aurora": smoke_aurora, "graphcast": smoke_graphcast}
+def smoke_ngcm_precip(device: str, pretrained: bool = False) -> dict:
+    """NeuralGCM precipitation (JAX): downloads the two official Zenodo checkpoints (CC-BY-4.0), checks the precipitation / evaporation
+    diagnostics of a 6-step rollout from the bundled ERA5 snapshot against a CPU reference, then the differentiable precipitation loss
+    (gradient finite / non-zero) and 4 fine-tune updates on the real GPU backend."""
+    import json
+    import os
+    import time
+
+    import jax
+    import neuralgcm
+    import numpy as np
+
+    from weatherai.models.neuralgcm import precip as P
+
+    res = {"jax_version": jax.__version__, "jax_backend": jax.default_backend(), "jax_devices": str(jax.devices())}
+    paths = P.download(os.environ.get("NGCM_PRECIP_DIR", "/tmp/ngcm_precip"))
+    ref = json.load(open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "tests", "models", "neuralgcm", "data", "precip_demo_ref.json")))
+    for name, path in paths.items():
+        ck = P.load_checkpoint(path)
+        t = time.time()
+        m = P.build(ck)
+        ds = neuralgcm.demo.load_data(m.data_coords)
+        pred = P.rollout(m, ds, steps=6, hours=1, seed=0)
+        cum = np.asarray(pred[P.PRECIP_KEY])
+        w = np.asarray(m.data_coords.horizontal.cos_lat)[None, :]
+        gm = lambda a: float(((a[:, 0] * w).mean((1, 2)) / w.mean())[-1])
+        res[f"{name}_rollout_seconds"] = round(time.time() - t, 1)
+        res[f"{name}_cum_precip_mm_global_mean_step6"] = round(gm(cum) * 1000, 4)
+        res[f"{name}_matches_cpu_ref"] = abs(gm(cum) * 1000 - ref[name]["cum_precip_mm_global_mean_step6"]) < 0.05 * abs(ref[name]["cum_precip_mm_global_mean_step6"]) + 1e-4
+        res[f"{name}_finite"] = bool(np.isfinite(cum).all() and np.isfinite(np.asarray(pred[P.EVAP_KEY])).all())
+        if name != "precip":
+            continue
+        first = ds.isel(time=0)
+        inp, frc = m.inputs_from_xarray(first), m.forcings_from_xarray(first)
+        tgt = np.full((1, 128, 64), 0.15, np.float32)
+        g = jax.grad(P.precip_loss)(m.params, m, inp, frc, tgt, 1)
+        leaves = jax.tree_util.tree_leaves(g)
+        res["loss_grad_all_finite"] = bool(all(np.isfinite(np.asarray(x)).all() for x in leaves))
+        res["loss_grad_nonzero_leaves"] = int(sum(bool((np.asarray(x) != 0).any()) for x in leaves))
+        res["loss_grad_leaves"] = len(leaves)
+        t = time.time()
+        params, hist = P.fit_precip(m, inp, frc, tgt, n_updates=4, steps=1, lr=3e-4, log=lambda *_: None)
+        res["fit_seconds"] = round(time.time() - t, 1)
+        res["fit_loss_history"] = [round(h[0], 5) for h in hist]
+        res["fit_loss_decreased"] = bool(hist[-1][0] < hist[0][0])
+        res["params_on_device"] = str(jax.tree_util.tree_leaves(params)[0].devices())
+    return res
+
+
+SMOKES = {"ngcm_precip": smoke_ngcm_precip, "ace2": smoke_ace2, "arches": smoke_arches, "stormcast": smoke_stormcast, "fuxi_ens": smoke_fuxi_ens, "neuralgcm_train": smoke_neuralgcm_train, "weathernext_cyclones": smoke_weathernext_cyclones, "aardvark": smoke_aardvark, "gencast": smoke_gencast, "neuralgcm": smoke_neuralgcm, "aurora": smoke_aurora, "graphcast": smoke_graphcast}
 
 
 def run(name: str, device: str, **kw) -> dict:
