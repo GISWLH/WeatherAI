@@ -20,14 +20,14 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 PKG = os.path.join(ROOT, "WeatherAI")
 sys.path.insert(0, PKG)
 
-MODELS = ["graphcast", "aurora", "neuralgcm", "gencast", "aardvark", "weathernext_cyclones", "neuralgcm_train", "fuxi_ens", "stormcast", "arches", "ace2", "ngcm_precip", "ngcm_precip_train", "ngcm_evap", "orca_dl", "tcn"]  # extended as models are added
+MODELS = ["graphcast", "aurora", "neuralgcm", "gencast", "aardvark", "weathernext_cyclones", "neuralgcm_train", "fuxi_ens", "stormcast", "arches", "ace2", "ngcm_precip", "ngcm_precip_train", "ngcm_evap", "orca_dl", "tcn", "fuxi_s2s", "unicm"]  # extended as models are added
 
 
 def _smoke(model: str, pretrained: bool) -> str:
     from scripts.gpu_smoke import run
 
     dev = "cuda" if torch.cuda.is_available() else "cpu"
-    kw = {"pretrained": pretrained} if model in ("aurora", "aardvark", "gencast", "weathernext_cyclones", "neuralgcm", "fuxi_ens", "stormcast", "arches", "ace2", "orca_dl", "tcn") else {}
+    kw = {"pretrained": pretrained} if model in ("aurora", "aardvark", "gencast", "weathernext_cyclones", "neuralgcm", "fuxi_ens", "stormcast", "arches", "ace2", "orca_dl", "tcn", "fuxi_s2s") else {}
     return json.dumps(run(model, dev, **kw), indent=2)
 
 
@@ -43,7 +43,7 @@ def smoke_cpu(model: str, pretrained: bool = False) -> str:
     try:
         from scripts.gpu_smoke import run
 
-        return json.dumps(run(model, "cpu", **({"pretrained": pretrained} if model in ("aurora", "aardvark", "gencast", "weathernext_cyclones", "neuralgcm", "fuxi_ens", "stormcast", "arches", "ace2", "orca_dl", "tcn") else {})), indent=2)
+        return json.dumps(run(model, "cpu", **({"pretrained": pretrained} if model in ("aurora", "aardvark", "gencast", "weathernext_cyclones", "neuralgcm", "fuxi_ens", "stormcast", "arches", "ace2", "orca_dl", "tcn", "fuxi_s2s") else {})), indent=2)
     except Exception:
         return "STATUS=FAIL\n" + traceback.format_exc()
 

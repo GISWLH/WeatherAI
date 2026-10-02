@@ -21,13 +21,39 @@ __all__ = ["download", "read_onnx_initializers", "load_official", "ZENODO_URL"]
 ZENODO_URL = "https://zenodo.org/records/15718402/files/{}"
 
 
+def _parallel_download(url: str, dst: str, workers: int = 16) -> None:
+    """Ranged parallel download (Zenodo serves ~0.7 MB/s per connection)."""
+    from concurrent.futures import ThreadPoolExecutor
+    req = urllib.request.Request(url, method="HEAD")
+    size = int(urllib.request.urlopen(req).headers["Content-Length"])
+    with open(dst, "wb") as f:
+        f.truncate(size)
+    chunk = -(-size // (workers * 4))
+    parts = [(s, min(s + chunk, size) - 1) for s in range(0, size, chunk)]
+
+    def get(r):
+        for attempt in range(5):
+            try:
+                rq = urllib.request.Request(url, headers={"Range": f"bytes={r[0]}-{r[1]}"})
+                data = urllib.request.urlopen(rq, timeout=120).read()
+                with open(dst, "r+b") as f:
+                    f.seek(r[0]); f.write(data)
+                return
+            except Exception:
+                if attempt == 4:
+                    raise
+
+    with ThreadPoolExecutor(workers) as ex:
+        list(ex.map(get, parts))
+
+
 def download(root: str, with_data: bool = False) -> str:
     """Fetch ``model-1.0.tar`` (2.08 GB) from Zenodo 15718402 into ``root``; returns the ``fuxi_s2s.onnx`` path."""
     onnx_path = os.path.join(root, "model-1.0", "fuxi_s2s.onnx")
     if not os.path.exists(onnx_path):
         os.makedirs(root, exist_ok=True)
         tar = os.path.join(root, "model-1.0.tar")
-        urllib.request.urlretrieve(ZENODO_URL.format("model-1.0.tar"), tar)
+        _parallel_download(ZENODO_URL.format("model-1.0.tar"), tar)
         with tarfile.open(tar) as t:
             t.extractall(root)
         os.remove(tar)

@@ -62,4 +62,16 @@ def fetch_tcn(out: str, log=print) -> None:
     log(download(out))
 
 
-FETCHERS = {"tcn": fetch_tcn, "orca_dl": fetch_orca_dl, "ace2": fetch_ace2, "stormcast": fetch_stormcast, "arches": fetch_arches}
+def fetch_fuxi_s2s(out: str, log=print) -> None:
+    """Zenodo 15718402 model-1.0.tar (2.08 GB, CC-BY-NC-ND-4.0: fetched for the user's own use, never redistributed) + the
+    authors' sample ERA5 inputs (GitHub tpys/FuXi-S2S)."""
+    from weatherai.models.fuxi_s2s import download_sample
+    from weatherai.models.fuxi_s2s.convert import download
+
+    log("downloading FuXi-S2S ONNX (2.08 GB) ...")
+    log(download(out))
+    log("downloading sample inputs ...")
+    log(download_sample(out + "/data"))
+
+
+FETCHERS = {"fuxi_s2s": fetch_fuxi_s2s, "tcn": fetch_tcn, "orca_dl": fetch_orca_dl, "ace2": fetch_ace2, "stormcast": fetch_stormcast, "arches": fetch_arches}

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import time
 import traceback
 
@@ -948,7 +949,113 @@ def smoke_ngcm_evap(device: str, pretrained: bool = False) -> dict:
     return _smoke_ngcm_precip_impl("evap", False)
 
 
-SMOKES = {"tcn": smoke_tcn, "orca_dl": smoke_orca_dl, "ngcm_precip": smoke_ngcm_precip, "ngcm_precip_train": smoke_ngcm_precip_train, "ngcm_evap": smoke_ngcm_evap, "ace2": smoke_ace2, "arches": smoke_arches, "stormcast": smoke_stormcast, "fuxi_ens": smoke_fuxi_ens, "neuralgcm_train": smoke_neuralgcm_train, "weathernext_cyclones": smoke_weathernext_cyclones, "aardvark": smoke_aardvark, "gencast": smoke_gencast, "neuralgcm": smoke_neuralgcm, "aurora": smoke_aurora, "graphcast": smoke_graphcast}
+def smoke_fuxi_s2s(device: str, pretrained: bool = False) -> dict:
+    """Lite: random-weight FuXi-S2S forward + backward. Pretrained: the official ONNX weights (Zenodo 15718402, CC-BY-NC-ND-4.0,
+    fetched to $FUXI_S2S_CKPT, default /tmp/fuxi_s2s, never redistributed) strict-loaded in fp32 on ``device``; one step on the
+    official sample input with fixed CPU-generated noise; per-channel mean/std of 8 probe channels compared with the CPU run
+    (tests/models/fuxi_s2s/data/cpu_summary.json)."""
+    import json
+    import os
+    import time
+
+    from weatherai.models.fuxi_s2s import FuXiS2S_lite, FuXiS2SNoise, make_input
+
+    res: dict = {}
+    m0 = FuXiS2S_lite().to(device)
+    c = m0.cfg
+    x0 = torch.randn(1, 2, c.n_channels, *c.img_size, device=device)
+    y0 = m0(x0, torch.zeros(1, device=device))
+    y0[:, 1].square().mean().backward()
+    res["lite_train_grads_finite"] = all(bool(torch.isfinite(p.grad).all()) for p in m0.parameters() if p.grad is not None)
+    if not pretrained:
+        return res
+    root = os.environ.get("FUXI_S2S_CKPT", "/tmp/fuxi_s2s")
+    onnx_path = os.path.join(root, "model-1.0", "fuxi_s2s.onnx")
+    if not os.path.exists(onnx_path):
+        res["error"] = f"weights not found at {onnx_path}; call the Space's fetch_weights endpoint (model=fuxi_s2s) first"
+        return res
+    from weatherai.models.fuxi_s2s.convert import load_official
+    from weatherai.models.fuxi_s2s.summary import fixed_noise, summarise
+
+    t = time.time()
+    m = load_official(onnx_path, device=device)
+    res["load_strict_seconds"] = round(time.time() - t, 1)
+    res["params"] = sum(p.numel() for p in m.parameters())
+    x, _ = make_input(os.path.join(root, "data"))
+    ref = json.load(open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "tests", "models", "fuxi_s2s", "data", "cpu_summary.json")))["mean_std"]
+    old = (torch.backends.cudnn.allow_tf32, torch.backends.cuda.matmul.allow_tf32)
+    torch.backends.cudnn.allow_tf32 = torch.backends.cuda.matmul.allow_tf32 = False
+    try:
+        t = time.time()
+        with torch.no_grad():
+            nz = fixed_noise(m)
+            out = m(torch.from_numpy(x)[None].to(device), torch.zeros(1, device=device), noise=FuXiS2SNoise(nz.eps1.to(device), nz.eps2.to(device)))
+        if device.startswith("cuda"):
+            torch.cuda.synchronize()
+        res["forward_seconds"] = round(time.time() - t, 2)
+    finally:
+        torch.backends.cudnn.allow_tf32, torch.backends.cuda.matmul.allow_tf32 = old
+    got = summarise(out)
+    worst = 0.0
+    for k, (mu, sd) in ref.items():
+        worst = max(worst, abs(got[k][0] - mu) / (sd + 1e-12), abs(got[k][1] - sd) / (sd + 1e-12))
+    res["probe_worst_rel_to_std_vs_cpu"] = worst
+    res["finite_forecast"] = bool(torch.isfinite(out[:, 1].nan_to_num()).all())
+    res["matches_cpu_1e-2"] = worst < 1e-2
+    if device.startswith("cuda"):
+        res["peak_mem_gb"] = round(torch.cuda.max_memory_allocated() / 1e9, 2)
+    return res
+
+
+def smoke_unicm(device: str) -> dict:
+    """Random weights (no public checkpoint): CPU-vs-device parity of the stored lite reference (eval rollout), then the full-size
+    model (12.7 M params): 24-month autoregressive rollout and a teacher-forced loss + backward."""
+    import time
+
+    import numpy as np
+
+    from weatherai.models.unicm import UniCM, UniCMConfig, climate_modes, unicm_loss
+
+    res: dict = {}
+    d = np.load(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "tests", "models", "unicm", "data", "ref_lite.npz"))
+    m = UniCM(UniCMConfig.lite()).eval()
+    m.load_state_dict({k[3:]: torch.from_numpy(d[k]) for k in d.files if k.startswith("sd/")}, strict=True)
+    m = m.to(device)
+    with torch.no_grad():
+        f, md = m(torch.from_numpy(d["x"]).to(device), torch.from_numpy(d["xm"]).to(device), torch.from_numpy(d["months"]).long().to(device), train=False)
+    res["lite_vs_official_max_abs"] = max(float((f.cpu() - torch.from_numpy(d["field"])).abs().max()), float((md.cpu() - torch.from_numpy(d["mode"])).abs().max()))
+    cfg = UniCMConfig()
+    torch.manual_seed(0)
+    m = UniCM(cfg).to(device)
+    res["params"] = sum(p.numel() for p in m.parameters())
+    T = cfg.his_len + cfg.pred_len
+    x = torch.randn(1, T, 5, 12, 72, device=device)
+    months = (torch.arange(T) % 12)[None].to(device)
+    t = time.time()
+    m.eval()
+    with torch.no_grad():
+        f, md = m(x[:, :cfg.his_len], climate_modes(x[:, :cfg.his_len], cfg), months, train=False)
+    if device.startswith("cuda"):
+        torch.cuda.synchronize()
+    res["rollout_seconds"] = round(time.time() - t, 2)
+    res["rollout_shape"] = list(f.shape)
+    res["rollout_finite"] = bool(torch.isfinite(f).all() and torch.isfinite(md).all())
+    m.train()
+    xb = torch.randn(4, T, 5, 12, 72, device=device)
+    mb = (torch.arange(T) % 12)[None].repeat(4, 1).to(device)
+    t = time.time()
+    loss, parts = unicm_loss(m, xb, mb)
+    loss.backward()
+    if device.startswith("cuda"):
+        torch.cuda.synchronize()
+        res["peak_mem_gb"] = round(torch.cuda.max_memory_allocated() / 1e9, 2)
+    res["train_step_seconds"] = round(time.time() - t, 2)
+    res["loss"] = float(loss.detach())
+    res["grads_finite"] = all(bool(torch.isfinite(p.grad).all()) for p in m.parameters() if p.grad is not None)
+    return res
+
+
+SMOKES = {"unicm": smoke_unicm, "fuxi_s2s": smoke_fuxi_s2s, "tcn": smoke_tcn, "orca_dl": smoke_orca_dl, "ngcm_precip": smoke_ngcm_precip, "ngcm_precip_train": smoke_ngcm_precip_train, "ngcm_evap": smoke_ngcm_evap, "ace2": smoke_ace2, "arches": smoke_arches, "stormcast": smoke_stormcast, "fuxi_ens": smoke_fuxi_ens, "neuralgcm_train": smoke_neuralgcm_train, "weathernext_cyclones": smoke_weathernext_cyclones, "aardvark": smoke_aardvark, "gencast": smoke_gencast, "neuralgcm": smoke_neuralgcm, "aurora": smoke_aurora, "graphcast": smoke_graphcast}
 
 
 def run(name: str, device: str, **kw) -> dict:

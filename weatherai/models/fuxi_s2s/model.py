@@ -320,8 +320,8 @@ class FuXiS2S(nn.Module):
         h = h.reshape(B, c.n_channels, *c.proc_size).float()
         h = F.interpolate(h, size=c.img_size, mode="bilinear", align_corners=False)
         y = (h + xn[:, -1].to(dt).float()) * self.std + self.mean
-        pc = c.precip_channel
-        y[:, pc] = torch.exp(y[:, pc].clamp(0.0, 7.0)) - 1.0
+        pc = c.precip_channel % c.n_channels
+        y = torch.cat([y[:, :pc], torch.exp(y[:, pc:pc + 1].clamp(0.0, 7.0)) - 1.0, y[:, pc + 1:]], 1)
         out = torch.stack([x[:, -1].float(), y], 1)
         if return_taps:
             return out, dict(xn=xn, emb=taps_d[0], L0=taps_d[1], L1=taps_d[2], fpn=f, mean=mean, cov=fac, diag=var, z=z,
