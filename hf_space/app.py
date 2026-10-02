@@ -20,7 +20,7 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 PKG = os.path.join(ROOT, "WeatherAI")
 sys.path.insert(0, PKG)
 
-MODELS = ["graphcast", "aurora", "neuralgcm", "gencast", "aardvark", "weathernext_cyclones", "neuralgcm_train", "fuxi_ens", "stormcast", "arches", "ace2", "ngcm_precip", "ngcm_evap"]  # extended as models are added
+MODELS = ["graphcast", "aurora", "neuralgcm", "gencast", "aardvark", "weathernext_cyclones", "neuralgcm_train", "fuxi_ens", "stormcast", "arches", "ace2", "ngcm_precip", "ngcm_precip_train", "ngcm_evap"]  # extended as models are added
 
 
 def _smoke(model: str, pretrained: bool) -> str:

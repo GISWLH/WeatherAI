@@ -786,7 +786,7 @@ def smoke_ace2(device: str, pretrained: bool = False) -> dict:
     return res
 
 
-def _smoke_ngcm_precip_impl(name: str, train: bool) -> dict:
+def _smoke_ngcm_precip_impl(name: str, train: bool, rollout: bool = True) -> dict:
     import json
     import os
     import time
@@ -804,17 +804,18 @@ def _smoke_ngcm_precip_impl(name: str, train: bool) -> dict:
     m = P.build(P.load_checkpoint(path))
     ds = neuralgcm.demo.load_data(m.data_coords)
     res["build_seconds"] = round(time.time() - t, 1)
-    t = time.time()
-    pred = P.rollout(m, ds, steps=6, hours=1, seed=0)
-    cum = np.asarray(pred[P.PRECIP_KEY])
-    w = np.asarray(m.data_coords.horizontal.cos_lat)[None, :]
-    g6 = float(((cum[:, 0] * w).mean((1, 2)) / w.mean())[-1] * 1000)
-    res["rollout_seconds_incl_compile"] = round(time.time() - t, 1)
-    res["cum_precip_mm_global_mean_step6"] = round(g6, 4)
-    res["cpu_reference_mm"] = round(ref[name]["cum_precip_mm_global_mean_step6"], 4)
-    res["matches_cpu_ref_5pct"] = abs(g6 - ref[name]["cum_precip_mm_global_mean_step6"]) < 0.05 * abs(ref[name]["cum_precip_mm_global_mean_step6"]) + 1e-4
-    res["finite"] = bool(np.isfinite(cum).all() and np.isfinite(np.asarray(pred[P.EVAP_KEY])).all())
-    res["min_hourly_rate_mm"] = round(float(P.precip_rate_mm_per_hour(pred).min()), 4)
+    if rollout:
+        t = time.time()
+        pred = P.rollout(m, ds, steps=6, hours=1, seed=0)
+        cum = np.asarray(pred[P.PRECIP_KEY])
+        w = np.asarray(m.data_coords.horizontal.cos_lat)[None, :]
+        g6 = float(((cum[:, 0] * w).mean((1, 2)) / w.mean())[-1] * 1000)
+        res["rollout_seconds_incl_compile"] = round(time.time() - t, 1)
+        res["cum_precip_mm_global_mean_step6"] = round(g6, 4)
+        res["cpu_reference_mm"] = round(ref[name]["cum_precip_mm_global_mean_step6"], 4)
+        res["matches_cpu_ref_5pct"] = abs(g6 - ref[name]["cum_precip_mm_global_mean_step6"]) < 0.05 * abs(ref[name]["cum_precip_mm_global_mean_step6"]) + 1e-4
+        res["finite"] = bool(np.isfinite(cum).all() and np.isfinite(np.asarray(pred[P.EVAP_KEY])).all())
+        res["min_hourly_rate_mm"] = round(float(P.precip_rate_mm_per_hour(pred).min()), 4)
     if train:
         first = ds.isel(time=0)
         inp, frc = m.inputs_from_xarray(first), m.forcings_from_xarray(first)
@@ -832,8 +833,13 @@ def _smoke_ngcm_precip_impl(name: str, train: bool) -> dict:
 
 def smoke_ngcm_precip(device: str, pretrained: bool = False) -> dict:
     """NeuralGCM precipitation-predicting checkpoint (official Zenodo pickle, CC-BY-4.0) on the JAX GPU backend: 6-step rollout from the
-    bundled ERA5 snapshot vs a CPU reference, then 3 optax fine-tune updates of the differentiable precipitation loss."""
-    return _smoke_ngcm_precip_impl("precip", True)
+    bundled ERA5 snapshot vs a CPU reference (the 120 s ZeroGPU limit does not fit rollout + gradient compile in one call)."""
+    return _smoke_ngcm_precip_impl("precip", False)
+
+
+def smoke_ngcm_precip_train(device: str, pretrained: bool = False) -> dict:
+    """3 optax fine-tune updates of the differentiable precipitation loss through the NeuralGCM dycore on the GPU (no separate rollout)."""
+    return _smoke_ngcm_precip_impl("precip", True, rollout=False)
 
 
 def smoke_ngcm_evap(device: str, pretrained: bool = False) -> dict:
@@ -841,7 +847,7 @@ def smoke_ngcm_evap(device: str, pretrained: bool = False) -> dict:
     return _smoke_ngcm_precip_impl("evap", False)
 
 
-SMOKES = {"ngcm_precip": smoke_ngcm_precip, "ngcm_evap": smoke_ngcm_evap, "ace2": smoke_ace2, "arches": smoke_arches, "stormcast": smoke_stormcast, "fuxi_ens": smoke_fuxi_ens, "neuralgcm_train": smoke_neuralgcm_train, "weathernext_cyclones": smoke_weathernext_cyclones, "aardvark": smoke_aardvark, "gencast": smoke_gencast, "neuralgcm": smoke_neuralgcm, "aurora": smoke_aurora, "graphcast": smoke_graphcast}
+SMOKES = {"ngcm_precip": smoke_ngcm_precip, "ngcm_precip_train": smoke_ngcm_precip_train, "ngcm_evap": smoke_ngcm_evap, "ace2": smoke_ace2, "arches": smoke_arches, "stormcast": smoke_stormcast, "fuxi_ens": smoke_fuxi_ens, "neuralgcm_train": smoke_neuralgcm_train, "weathernext_cyclones": smoke_weathernext_cyclones, "aardvark": smoke_aardvark, "gencast": smoke_gencast, "neuralgcm": smoke_neuralgcm, "aurora": smoke_aurora, "graphcast": smoke_graphcast}
 
 
 def run(name: str, device: str, **kw) -> dict:
