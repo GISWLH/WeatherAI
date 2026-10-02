@@ -1,0 +1,109 @@
+{
+ "init": "1980-01 (GODAS)",
+ "seeds": [
+  1
+ ],
+ "truth_vs_demo_sst_jan_wrmse_degC": 6.103515622238783e-06,
+ "leads": [
+  {
+   "lead_months": 1,
+   "rmse_orca_dl": 0.4334816627624302,
+   "rmse_persistence": 0.7001425643984823,
+   "rmse_climatology": 0.9905492102431623,
+   "nino34_truth_anom": 0.42106593795858416,
+   "nino34_orca_dl_anom": 0.4923515319824219,
+   "nino34_persistence_anom": 0.3520251887923145
+  },
+  {
+   "lead_months": 2,
+   "rmse_orca_dl": 0.6017972457533468,
+   "rmse_persistence": 0.8743147653917671,
+   "rmse_climatology": 0.9059708076847455,
+   "nino34_truth_anom": 0.010737213004727408,
+   "nino34_orca_dl_anom": 0.3047046661376953,
+   "nino34_persistence_anom": -0.0990970951432324
+  },
+  {
+   "lead_months": 3,
+   "rmse_orca_dl": 0.6403759610198664,
+   "rmse_persistence": 1.043994889447134,
+   "rmse_climatology": 0.7707345416374467,
+   "nino34_truth_anom": 0.13302998348231299,
+   "nino34_orca_dl_anom": 0.13798141479492188,
+   "nino34_persistence_anom": -0.5749748569840527
+  },
+  {
+   "lead_months": 4,
+   "rmse_orca_dl": 0.7017762656649406,
+   "rmse_persistence": 1.6363625681896914,
+   "rmse_climatology": 0.712335726167831,
+   "nino34_truth_anom": 0.3395994729456824,
+   "nino34_orca_dl_anom": 0.1356945037841797,
+   "nino34_persistence_anom": -0.6476620060319043
+  },
+  {
+   "lead_months": 5,
+   "rmse_orca_dl": 0.7303662794680108,
+   "rmse_persistence": 2.563177087587825,
+   "rmse_climatology": 0.6847985738280988,
+   "nino34_truth_anom": 0.610578020768326,
+   "nino34_orca_dl_anom": 0.2809333801269531,
+   "nino34_persistence_anom": -0.3691929203385449
+  },
+  {
+   "lead_months": 6,
+   "rmse_orca_dl": 0.7172221482654431,
+   "rmse_persistence": 3.5456528865338584,
+   "rmse_climatology": 0.6780510055051933,
+   "nino34_truth_anom": 0.4034919255947784,
+   "nino34_orca_dl_anom": 0.1773529052734375,
+   "nino34_persistence_anom": 0.09122005878743167
+  },
+  {
+   "lead_months": 7,
+   "rmse_orca_dl": 0.7470299695739965,
+   "rmse_persistence": 4.1794743839226465,
+   "rmse_climatology": 0.6983493912871331,
+   "nino34_truth_anom": 0.21524953424906457,
+   "nino34_orca_dl_anom": -0.028753280639648438,
+   "nino34_persistence_anom": 0.5090114253645801
+  },
+  {
+   "lead_months": 8,
+   "rmse_orca_dl": 0.7972731400904554,
+   "rmse_persistence": 4.121727262031908,
+   "rmse_climatology": 0.6921440794046535,
+   "nino34_truth_anom": -0.07597377752380297,
+   "nino34_orca_dl_anom": -0.23578453063964844,
+   "nino34_persistence_anom": 0.6672202724104785
+  },
+  {
+   "lead_months": 9,
+   "rmse_orca_dl": 0.8360409128227932,
+   "rmse_persistence": 3.383842013812255,
+   "rmse_climatology": 0.6813001080414502,
+   "nino34_truth_anom": -0.13534962945678686,
+   "nino34_orca_dl_anom": 0.03198051452636719,
+   "nino34_persistence_anom": 0.6352721828108692
+  },
+  {
+   "lead_months": 10,
+   "rmse_orca_dl": 0.9320231852536831,
+   "rmse_persistence": 2.2598141344849627,
+   "rmse_climatology": 0.7741349352756407,
+   "nino34_truth_anom": -0.02391876171822105,
+   "nino34_orca_dl_anom": 0.4441184997558594,
+   "nino34_persistence_anom": 0.5732490199690723
+  },
+  {
+   "lead_months": 11,
+   "rmse_orca_dl": 0.9640932976576079,
+   "rmse_persistence": 1.1382187361011955,
+   "rmse_climatology": 0.9016138216499413,
+   "nino34_truth_anom": 0.045091513748324985,
+   "nino34_orca_dl_anom": 0.7482166290283203,
+   "nino34_persistence_anom": 0.5526839870100879
+  }
+ ],
+ "note": "RMSE: latitude-weighted over GODAS ocean points (|lat|<=63.5); Nino3.4 anomaly = box mean minus the shipped monthly climatology"
+}
