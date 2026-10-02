@@ -29,4 +29,19 @@ def fetch_arches(out: str, log=print) -> None:
     log({f: os.path.getsize(os.path.join(out, f)) for f in sorted(os.listdir(out)) if os.path.isfile(os.path.join(out, f))})
 
 
-FETCHERS = {"stormcast": fetch_stormcast, "arches": fetch_arches}
+def fetch_ace2(out: str, log=print) -> None:
+    """HF allenai/ACE2-ERA5 (Apache-2.0): checkpoint 1.8 GB, 2020 initial conditions and forcing (0.55 GB), plus a WeatherBench2 ERA5 sample."""
+    from weatherai.models.ace2.convert import download
+
+    log("downloading allenai/ACE2-ERA5 ...")
+    download(out)
+    try:
+        import subprocess, sys
+
+        subprocess.run([sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), "fetch_wb2_ace2.py"), os.path.join(out, "wb2_sample_2020.nc")], check=True)
+    except Exception as e:  # optional
+        log(f"WB2 sample not fetched: {e!r}")
+    log({f: os.path.getsize(os.path.join(out, f)) for f in sorted(os.listdir(out)) if os.path.isfile(os.path.join(out, f))})
+
+
+FETCHERS = {"ace2": fetch_ace2, "stormcast": fetch_stormcast, "arches": fetch_arches}

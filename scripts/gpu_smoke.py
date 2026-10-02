@@ -717,7 +717,76 @@ def smoke_arches(device: str, pretrained: bool = False) -> dict:
     return res
 
 
-SMOKES = {"arches": smoke_arches, "stormcast": smoke_stormcast, "fuxi_ens": smoke_fuxi_ens, "neuralgcm_train": smoke_neuralgcm_train, "weathernext_cyclones": smoke_weathernext_cyclones, "aardvark": smoke_aardvark, "gencast": smoke_gencast, "neuralgcm": smoke_neuralgcm, "aurora": smoke_aurora, "graphcast": smoke_graphcast}
+def smoke_ace2(device: str, pretrained: bool = False) -> dict:
+    """Lite: SFNO + stepper forward/backward. Pretrained: official ACE2-ERA5 checkpoint (HF allenai/ACE2-ERA5, Apache-2.0) strict-loaded;
+    1/4-step outputs checked against CPU reference slices (the CPU model is parity-checked vs ai2cm/ace `fme`), then a 32-step (8-day)
+    rollout from the shipped 2020-06-01 initial condition scored against WeatherBench2 ERA5 (h500, TMP850, TMP2m) and persistence."""
+    import os
+    import time
+
+    import numpy as np
+    from weatherai.models.ace2 import SFNO, SFNOConfig
+
+    res: dict = {}
+    ins, names = list(range(7)), list(range(5))   # lite: 7 input / 5 output channels
+    sf = SFNOConfig(in_chans=len(ins), out_chans=len(names), img_shape=(24, 48), embed_dim=16, num_layers=2)
+    net = SFNO(sf).to(device)
+    y = net(torch.randn(2, len(ins), 24, 48, device=device))
+    y.square().mean().backward()
+    res["lite_sfno_train_grads_finite"] = all(p.grad is not None and bool(torch.isfinite(p.grad).all()) for p in net.parameters())
+    if not pretrained:
+        return res
+
+    ck = os.environ.get("ACE2_CKPT", "/tmp/ace2")
+    if not os.path.exists(f"{ck}/ace2_era5_ckpt.tar"):
+        res["error"] = f"weights not found in {ck}; call the Space's fetch_weights endpoint (model=ace2) first"
+        return res
+    from weatherai.models.ace2 import load_official
+    from weatherai.models.ace2.data import compare_with_wb2, load_case
+
+    def sync():
+        if device.startswith("cuda"):
+            torch.cuda.synchronize()
+
+    t = time.time()
+    model = load_official(ck)
+    res["load_strict_seconds"] = round(time.time() - t, 1)
+    res["params"] = sum(p.numel() for p in model.net.parameters())
+    model = model.to(device)
+    ic, forcing, _ = load_case(ck, 5, 32)
+    ic = {k: v.to(device) for k, v in ic.items()}
+    forcing = {k: v.to(device) for k, v in forcing.items()}
+    ref = np.load(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "tests", "models", "ace2", "data", "ref_cpu_fp32.npz"))
+    old = (torch.backends.cudnn.allow_tf32, torch.backends.cuda.matmul.allow_tf32)
+    torch.backends.cudnn.allow_tf32 = torch.backends.cuda.matmul.allow_tf32 = False
+    sync(); t = time.time()
+    outs4 = model.rollout(ic, forcing, 4)
+    sync()
+    res["rollout_4_steps_seconds_tf32_off"] = round(time.time() - t, 2)
+    rel = lambda a, b: float(np.linalg.norm(a - b) / np.linalg.norm(b))
+    for s, key in [(0, "step1"), (3, "step4")]:
+        res[f"rel_err_{key}_vs_cpu"] = max(rel(outs4[s][n][0, ::5, ::7].cpu().numpy(), ref[f"{key}_{n}"]) for n in ("TMP2m", "PRESsfc", "PRATEsfc", "air_temperature_3", "eastward_wind_5"))
+    torch.backends.cudnn.allow_tf32, torch.backends.cuda.matmul.allow_tf32 = old
+    res["matches_cpu_tf32_off"] = res["rel_err_step1_vs_cpu"] < 1e-3 and res["rel_err_step4_vs_cpu"] < 1e-2
+    sync(); t = time.time()
+    outs = model.rollout(ic, forcing, 32)
+    sync()
+    res["rollout_32_steps_seconds"] = round(time.time() - t, 2)
+    res["finite"] = all(bool(torch.isfinite(v).all()) for v in outs[-1].values())
+    names8 = ("PRESsfc",) + tuple(f"specific_total_water_{i}" for i in range(8))
+    d0, d1 = model.global_dry_air({k: outs[0][k] for k in names8}).item(), model.global_dry_air({k: outs[-1][k] for k in names8}).item()
+    res["dry_air_drift_Pa_over_8d"] = d1 - d0
+    if os.path.exists(os.path.join(ck, "wb2_sample_2020.nc")):
+        cmp = compare_with_wb2(outs, ck)
+        for d, v in cmp.items():
+            for k, x in v.items():
+                res[f"rmse_day{d}_{k}"] = round(x["ace2"], 3)
+                res[f"rmse_day{d}_{k}_persistence"] = round(x["persistence"], 3)
+        res["beats_persistence_h500_days_1_3"] = all(cmp[d]["h500"]["ace2"] < cmp[d]["h500"]["persistence"] for d in (1, 3))
+    return res
+
+
+SMOKES = {"ace2": smoke_ace2, "arches": smoke_arches, "stormcast": smoke_stormcast, "fuxi_ens": smoke_fuxi_ens, "neuralgcm_train": smoke_neuralgcm_train, "weathernext_cyclones": smoke_weathernext_cyclones, "aardvark": smoke_aardvark, "gencast": smoke_gencast, "neuralgcm": smoke_neuralgcm, "aurora": smoke_aurora, "graphcast": smoke_graphcast}
 
 
 def run(name: str, device: str, **kw) -> dict:
@@ -744,5 +813,5 @@ if __name__ == "__main__":
     ap.add_argument("--device", default="cpu")
     ap.add_argument("--pretrained", action="store_true")
     a = ap.parse_args()
-    kw = {"pretrained": a.pretrained} if a.model in ("aurora", "aardvark", "gencast", "weathernext_cyclones", "neuralgcm", "fuxi_ens", "stormcast", "arches") else {}
+    kw = {"pretrained": a.pretrained} if a.model in ("aurora", "aardvark", "gencast", "weathernext_cyclones", "neuralgcm", "fuxi_ens", "stormcast", "arches", "ace2") else {}
     print(json.dumps(run(a.model, a.device, **kw)))
