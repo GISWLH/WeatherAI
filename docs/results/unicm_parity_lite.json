@@ -1,0 +1,57 @@
+{
+ "config": "lite",
+ "params": 68853,
+ "strict_load": "<All keys matched successfully>",
+ "params_official": 68853,
+ "eval_field_rel_l2": 0.0,
+ "eval_field_max_abs": 0.0,
+ "eval_mode_rel_l2": 0.0,
+ "eval_mode_max_abs": 0.0,
+ "eval_out_shapes": [
+  [
+   2,
+   4,
+   5,
+   12,
+   72
+  ],
+  [
+   2,
+   11,
+   4
+  ]
+ ],
+ "eval_field_std": 0.5778008699417114,
+ "train_pass_field_rel_l2": 1.596562384520439e-07,
+ "train_pass_mode_rel_l2": 1.3335524329249893e-07,
+ "grad_note": "per-parameter ||dnative-dofficial|| / (||dofficial|| + 1e-5*global norm); key-projection biases have zero gradient analytically (softmax shift invariance)",
+ "grad_worst": [
+  [
+   7.373388939413417e-07,
+   "encoder_mode.layers.0.time_attn.linears.1.bias"
+  ],
+  [
+   1.0979855460391263e-06,
+   "decoder.layers.0.encoder_attn.linears.1.bias"
+  ],
+  [
+   5.848194177815458e-06,
+   "decoder_mode.layers.0.time_attn.linears.1.bias"
+  ],
+  [
+   7.621223630849272e-06,
+   "decoder_mode.layers.0.space_attn.linears.1.bias"
+  ],
+  [
+   2.7563210096559487e-05,
+   "decoder_mode.layers.0.encoder_attn.linears.1.bias"
+  ]
+ ],
+ "grad_max_rel_l2": 2.7563210096559487e-05,
+ "params_without_grad_official": [
+  "decoder.layers.0.sublayer.2.norm.weight",
+  "decoder.layers.0.sublayer.2.norm.bias",
+  "decoder_mode.layers.0.sublayer.2.norm.weight",
+  "decoder_mode.layers.0.sublayer.2.norm.bias"
+ ]
+}
