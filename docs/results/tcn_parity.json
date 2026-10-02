@@ -1,0 +1,23 @@
+{
+ "n_samples": 24,
+ "dataset_len": 307,
+ "data_pipeline_max_abs_diff": {
+  "image": 5.960464477539062e-07,
+  "traj": 0.0,
+  "rel": 0.0,
+  "env": 0.0,
+  "gt": 0.0
+ },
+ "generators_rel_l2_native_vs_official_same_inputs": 0.0,
+ "generators_max_abs": 0.0,
+ "chooser_logits_max_abs": 0.0,
+ "generators_rel_l2_native_data_vs_official_data": 1.1998586160189006e-06,
+ "pred_increment_std": 0.10186459869146347,
+ "sampled_classes_identical": true,
+ "members_where_official_loop_covers_all_drawn_classes": 6,
+ "members_total": 6,
+ "sampled_rel_l2_native_vs_official": 0.0,
+ "single_storm_members_unfilled_official": 42,
+ "single_storm_members_unfilled_native": 0,
+ "single_storm_members_total": 48
+}
