@@ -169,10 +169,11 @@ _ERA5_VARS = [
 ]
 
 
-def fetch_era5_window(model, start: str, steps: int, hours: int = 1, cache_dir: Optional[str] = None):
+def fetch_era5_window(model, start: str, steps: int, hours: int = 1, cache_dir: Optional[str] = None, extra_vars: Sequence[str] = ()):
     """Public ARCO-ERA5 (0.25 deg, 37 levels, hourly) at ``start + k*hours``, k=0..steps, conservatively regridded to
     the model's data grid -> an ``xarray.Dataset`` like ``neuralgcm.demo.load_data`` (needs ``gcsfs zarr``, network).
 
+    ``extra_vars`` adds more single-level ARCO variables (e.g. ``"total_precipitation"``, metres accumulated over the preceding hour).
     Land SST is NaN in ERA5; it is filled with the global mean of the valid (ocean) values and sea-ice NaN with 0
     (NeuralGCM only uses SST/ice over the ocean). Results are cached as .nc in ``cache_dir``.
     """
@@ -184,7 +185,8 @@ def fetch_era5_window(model, start: str, steps: int, hours: int = 1, cache_dir: 
 
     cache_dir = cache_dir or os.path.join(os.path.expanduser("~"), ".cache", "weatherai", "era5")
     os.makedirs(cache_dir, exist_ok=True)
-    key = f"era5_{start}_{steps}x{hours}h_{model.data_coords.horizontal.nodal_shape[0]}x{model.data_coords.horizontal.nodal_shape[1]}.nc".replace(":", "")
+    xtra = ("_" + "-".join(extra_vars)) if extra_vars else ""
+    key = f"era5_{start}_{steps}x{hours}h_{model.data_coords.horizontal.nodal_shape[0]}x{model.data_coords.horizontal.nodal_shape[1]}{xtra}.nc".replace(":", "")
     path = os.path.join(cache_dir, key)
     if os.path.exists(path):
         return xr.load_dataset(path)
@@ -195,7 +197,7 @@ def fetch_era5_window(model, start: str, steps: int, hours: int = 1, cache_dir: 
     reg = hi.ConservativeRegridder(src, tgt)
     levels = model.data_coords.vertical.centers
     data = {}
-    for v in _ERA5_VARS:
+    for v in list(_ERA5_VARS) + list(extra_vars):
         frames = []
         for t in times:
             a = ds[v].sel(time=t)

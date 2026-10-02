@@ -1,0 +1,61 @@
+{
+ "start": "2020-01-01T00Z",
+ "steps": 24,
+ "seeds": 4,
+ "models": {
+  "precip": {
+   "era5_24h_global_mean_mm": 2.969715011465966,
+   "member_24h_global_mean_mm": [
+    2.820000203214128,
+    2.4961401712985523,
+    2.5834479227949565,
+    2.694280555198417
+   ],
+   "member_rmse_24h_mm": [
+    4.03560783089619,
+    3.821371565726786,
+    3.833476734336097,
+    3.8855900884894363
+   ],
+   "member_pattern_corr": [
+    0.8158610430162458,
+    0.818718420611245,
+    0.8222442724152053,
+    0.8312723258027338
+   ],
+   "ensemble_mean_rmse_24h_mm": 3.2471896195779233,
+   "ensemble_mean_pattern_corr": 0.86803218870064,
+   "baseline_rmse_constant_global_mean_mm": 6.287148544596516,
+   "member_min_rate_mm_h": 0.0,
+   "negative_fraction": 0.0,
+   "spread_across_members_mm": 2.1508954237557845
+  },
+  "evap": {
+   "era5_24h_global_mean_mm": 2.969715011465966,
+   "member_24h_global_mean_mm": [
+    2.7975925267613815,
+    2.7711827276467713,
+    2.7530738535305215,
+    2.636037396084
+   ],
+   "member_rmse_24h_mm": [
+    4.029523376988729,
+    4.010567326230403,
+    4.065034641299041,
+    4.057007659585271
+   ],
+   "member_pattern_corr": [
+    0.8274244349906206,
+    0.8194472619313659,
+    0.8245220977496871,
+    0.8215624813136002
+   ],
+   "ensemble_mean_rmse_24h_mm": 3.327687422501995,
+   "ensemble_mean_pattern_corr": 0.8703888328108144,
+   "baseline_rmse_constant_global_mean_mm": 6.287148544596516,
+   "member_min_rate_mm_h": -1.244358777999878,
+   "negative_fraction": 0.37975438435872394,
+   "spread_across_members_mm": 2.2919158632485463
+  }
+ }
+}
