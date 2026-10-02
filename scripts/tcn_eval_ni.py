@@ -52,6 +52,10 @@ res["track_error_km_persistence"] = [round(float(x), 1) for x in pers_err]
 res["pressure_mae_hPa_best_track_member"] = fmt(p_mae)
 res["wind_mae_ms_best_track_member"] = fmt(w_mae)
 res["official_script_quoted_all_basins_ckpt5100_km"] = [23.9360, 47.1055, 72.3829, 103.1691]
+with torch.no_grad():
+    probs = torch.cat([m.prepare(rel[:, i:i + 64], img[i:i + 64], {k: v[i:i + 64] for k, v in env.items()})[0].softmax(-1) for i in range(0, N, 64)])
+res["chooser_mean_max_prob"] = round(float(probs.max(-1).values.mean()), 3)      # 1/6 = 0.167 would be uniform
+res["chooser_argmax_class_counts"] = torch.bincount(probs.argmax(-1), minlength=6).tolist()
 res["lead_hours"] = [6, 12, 18, 24]
 print(json.dumps(res, indent=1))
 json.dump(res, open("docs/results/tcn_eval_ni.json", "w"), indent=1)

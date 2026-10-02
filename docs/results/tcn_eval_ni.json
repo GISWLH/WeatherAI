@@ -1,0 +1,86 @@
+{
+ "windows": 307,
+ "storms": 20,
+ "seeds": [
+  0,
+  1,
+  2
+ ],
+ "track_error_km_best_of_6": [
+  30.2,
+  53.4,
+  79.1,
+  112.9
+ ],
+ "track_error_km_best_of_6_per_seed": [
+  [
+   30.5,
+   54.0,
+   79.7,
+   114.4
+  ],
+  [
+   30.8,
+   54.3,
+   79.7,
+   112.9
+  ],
+  [
+   29.3,
+   51.9,
+   77.9,
+   111.3
+  ]
+ ],
+ "track_error_km_member_mean": [
+  39.0,
+  76.7,
+  118.3,
+  164.3
+ ],
+ "track_error_km_constant_velocity": [
+  42.6,
+  88.6,
+  137.4,
+  191.2
+ ],
+ "track_error_km_persistence": [
+  83.8,
+  165.9,
+  246.3,
+  325.7
+ ],
+ "pressure_mae_hPa_best_track_member": [
+  3.1,
+  5.6,
+  7.7,
+  9.4
+ ],
+ "wind_mae_ms_best_track_member": [
+  2.4,
+  4.4,
+  6.2,
+  7.7
+ ],
+ "official_script_quoted_all_basins_ckpt5100_km": [
+  23.936,
+  47.1055,
+  72.3829,
+  103.1691
+ ],
+ "chooser_mean_max_prob": 0.174,
+ "chooser_argmax_class_counts": [
+  101,
+  197,
+  4,
+  0,
+  5,
+  0
+ ],
+ "lead_hours": [
+  6,
+  12,
+  18,
+  24
+ ]
+}
