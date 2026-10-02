@@ -74,7 +74,8 @@ class TestPrecipCheckpoints(unittest.TestCase):
         leaves = jax.tree.leaves(g)
         self.assertTrue(all(bool(np.isfinite(np.asarray(x)).all()) for x in leaves))
         nz = sum(bool(np.abs(np.asarray(x)).max() > 0) for x in leaves)
-        self.assertGreater(nz / len(leaves), 0.5)
+        # only parameters upstream of the precipitation diagnostic in one step get gradient (not e.g. the state decoder): 38% of leaves
+        self.assertGreater(nz / len(leaves), 0.25)
 
     def test_short_finetune_reduces_loss_on_constant_target(self):
         import jax
