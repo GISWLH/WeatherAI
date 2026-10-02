@@ -20,14 +20,14 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 PKG = os.path.join(ROOT, "WeatherAI")
 sys.path.insert(0, PKG)
 
-MODELS = ["graphcast", "aurora", "neuralgcm", "gencast", "aardvark", "weathernext_cyclones", "neuralgcm_train", "fuxi_ens"]  # extended as models are added
+MODELS = ["graphcast", "aurora", "neuralgcm", "gencast", "aardvark", "weathernext_cyclones", "neuralgcm_train", "fuxi_ens", "stormcast"]  # extended as models are added
 
 
 def _smoke(model: str, pretrained: bool) -> str:
     from scripts.gpu_smoke import run
 
     dev = "cuda" if torch.cuda.is_available() else "cpu"
-    kw = {"pretrained": pretrained} if model in ("aurora", "aardvark", "gencast", "weathernext_cyclones", "neuralgcm", "fuxi_ens") else {}
+    kw = {"pretrained": pretrained} if model in ("aurora", "aardvark", "gencast", "weathernext_cyclones", "neuralgcm", "fuxi_ens", "stormcast") else {}
     return json.dumps(run(model, dev, **kw), indent=2)
 
 
@@ -43,7 +43,7 @@ def smoke_cpu(model: str, pretrained: bool = False) -> str:
     try:
         from scripts.gpu_smoke import run
 
-        return json.dumps(run(model, "cpu", **({"pretrained": pretrained} if model in ("aurora", "aardvark", "gencast", "weathernext_cyclones", "neuralgcm", "fuxi_ens") else {})), indent=2)
+        return json.dumps(run(model, "cpu", **({"pretrained": pretrained} if model in ("aurora", "aardvark", "gencast", "weathernext_cyclones", "neuralgcm", "fuxi_ens", "stormcast") else {})), indent=2)
     except Exception:
         return "STATUS=FAIL\n" + traceback.format_exc()
 
@@ -86,6 +86,33 @@ def fetch_fuxi_ens(background: bool = True) -> str:
     return json.dumps({"state": _FETCH["state"], "dir": out, "files": files, "free_disk_GiB": free, "log": _FETCH["log"][-6:]}, indent=1)
 
 
+_WFETCH: dict = {}
+
+
+def fetch_weights(model: str) -> str:
+    """Download a model's official weights on the Space CPU in a background thread (to $<MODEL>_CKPT, default /tmp/<model>).
+    Call again to poll. See scripts/fetch_weights.py for the registry; weights never enter git."""
+    import threading
+
+    from scripts.fetch_weights import FETCHERS
+
+    out = os.environ.get(f"{model.upper()}_CKPT", f"/tmp/{model}")
+    st = _WFETCH.setdefault(model, {"state": "idle", "log": []})
+    if st["state"] in ("idle", "error"):
+        def work():
+            try:
+                st["state"] = "running"
+                FETCHERS[model](out, log=lambda m: st["log"].append(str(m)))
+                st["state"] = "done"
+            except Exception:
+                st["state"] = "error"
+                st["log"].append(traceback.format_exc()[-1500:])
+
+        st["state"] = "starting"
+        threading.Thread(target=work, daemon=True).start()
+    return json.dumps({"model": model, "state": st["state"], "dir": out, "log": st["log"][-6:]}, indent=1)
+
+
 def unit_tests(model: str) -> str:
     r = subprocess.run(
         [sys.executable, "-m", "pytest", f"tests/models/{model}", "-q", "-x", "--no-header", "-p", "no:cacheprovider"],
@@ -107,6 +134,8 @@ with gr.Blocks(title="WeatherAI models smoke") as demo:
     b_cpu.click(smoke_cpu, [model, pre], out, api_name="smoke_cpu")
     b_fetch = gr.Button("FuXi-ENS: download / poll weights (CPU, Zenodo)")
     b_fetch.click(fetch_fuxi_ens, [], out, api_name="fetch_fuxi_ens")
+    b_wf = gr.Button("Download official weights for the selected model (CPU, background; click again to poll)")
+    b_wf.click(fetch_weights, [model], out, api_name="fetch_weights")
     b_ut.click(unit_tests, [model], out, api_name="unit_tests")
 
 if __name__ == "__main__":

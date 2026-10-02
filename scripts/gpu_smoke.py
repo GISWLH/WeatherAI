@@ -528,7 +528,99 @@ def smoke_fuxi_ens(device: str, pretrained: bool = False) -> dict:
     return res
 
 
-SMOKES = {"fuxi_ens": smoke_fuxi_ens, "neuralgcm_train": smoke_neuralgcm_train, "weathernext_cyclones": smoke_weathernext_cyclones, "aardvark": smoke_aardvark, "gencast": smoke_gencast, "neuralgcm": smoke_neuralgcm, "aurora": smoke_aurora, "graphcast": smoke_graphcast}
+def smoke_stormcast(device: str, pretrained: bool = False) -> dict:
+    """Lite: forward + one training step + 4-step EDM sampling. Pretrained: official nvidia/stormcast-v1-era5-hrrr (Apache-2.0,
+    downloaded to $STORMCAST_CKPT by the Space's ``fetch_weights`` endpoint) strict-loaded; regression net + one EDM denoise
+    evaluated at 512x640 on seeded noise inputs and compared with the CPU reference slices
+    (``tests/models/stormcast/data/ref_cpu_fp32.npz``, CPU outputs of the native port that are bit-identical to the PhysicsNeMo
+    modules); then a full 18-step Heun diffusion sample is timed. No real HRRR/GFS data are used."""
+    import os
+
+    import numpy as np
+    from weatherai.models.stormcast import StormCast_lite
+
+    res: dict = {}
+    m = StormCast_lite().to(device)
+    c = m.cfg
+    x = torch.randn(2, c.n_state, 64, 64, device=device)
+    cond = torch.randn(2, c.n_cond, 64, 64, device=device)
+    with torch.no_grad():
+        y = m.eval()(x, cond, generator=torch.Generator(device).manual_seed(0))
+    res["lite_forward_finite"] = bool(torch.isfinite(y).all()) and tuple(y.shape) == tuple(x.shape)
+    m.train()
+    inv = m.invariants.expand(2, -1, -1, -1)
+    mean = m.regression(torch.cat([x, cond, inv], 1))
+    sig = torch.tensor([0.5, 3.0], device=device)
+    den = m.diffusion(x + sig.view(-1, 1, 1, 1) * torch.randn_like(x), sig, torch.cat([x, mean.detach(), inv], 1))
+    ((mean - x).pow(2).mean() + (den - x).pow(2).mean()).backward()
+    res["lite_train_grads_finite"] = all(p.grad is not None and bool(torch.isfinite(p.grad).all()) for p in m.parameters())
+    if not pretrained:
+        return res
+
+    import time
+
+    ck = os.environ.get("STORMCAST_CKPT", "/tmp/stormcast")
+    if not os.path.exists(f"{ck}/EDMPrecond.0.0.mdlus"):
+        res["error"] = f"weights not found in {ck}; call the Space's fetch_weights endpoint (model=stormcast) first"
+        res["checkpoint_present"] = False
+        return res
+    from weatherai.models.stormcast import load_official
+
+    t = time.time()
+    try:
+        model = load_official(ck, with_metadata=True)
+        res["metadata_loaded"] = True
+    except Exception as e:  # zarr/xarray API differences on the Space's python 3.10 stack
+        model = load_official(ck, with_metadata=False)
+        res["metadata_loaded"] = False
+        res["metadata_error"] = repr(e)[:200]
+    res["load_strict_seconds"] = round(time.time() - t, 1)
+    res["params_regression_M"] = round(sum(p.numel() for p in model.regression.parameters()) / 1e6, 2)
+    res["params_diffusion_M"] = round(sum(p.numel() for p in model.diffusion.parameters()) / 1e6, 2)
+    model = model.to(device).eval()
+    ref = np.load(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "tests", "models", "stormcast", "data", "ref_cpu_fp32.npz"))
+    g = torch.Generator().manual_seed(0)
+    xin = torch.randn(1, 127, 512, 640, generator=g)
+    xn = 3 * torch.randn(1, 99, 512, 640, generator=g)
+    cd = torch.randn(1, 200, 512, 640, generator=g)
+    sl = (slice(None), slice(None, None, 4), slice(None, None, 31), slice(None, None, 37))
+
+    def sync():
+        if device.startswith("cuda"):
+            torch.cuda.synchronize()
+
+    def rel(a, b):
+        return float(np.linalg.norm(a - b) / np.linalg.norm(b))
+
+    old = (torch.backends.cudnn.allow_tf32, torch.backends.cuda.matmul.allow_tf32)
+    for tag, tf32 in (("tf32_off", False), ("tf32_default", old[0])):
+        torch.backends.cudnn.allow_tf32 = torch.backends.cuda.matmul.allow_tf32 = tf32
+        with torch.no_grad():
+            sync(); t = time.time()
+            yr = model.regression(xin.to(device)); sync()
+            res[f"regression_512x640_seconds_{tag}"] = round(time.time() - t, 2)
+            yd = model.diffusion(xn.to(device), torch.tensor([5.0], device=device), cd.to(device)); sync()
+        res[f"rel_err_regression_vs_cpu_{tag}"] = rel(yr[sl].float().cpu().numpy(), ref["reg"])
+        res[f"rel_err_edm_sigma5_vs_cpu_{tag}"] = rel(yd[sl].float().cpu().numpy(), ref["edm_sigma5"])
+        res[f"regression_matches_cpu_{tag}"] = res[f"rel_err_regression_vs_cpu_{tag}"] < (1e-4 if not tf32 else 2e-2)
+        res[f"edm_matches_cpu_{tag}"] = res[f"rel_err_edm_sigma5_vs_cpu_{tag}"] < (1e-4 if not tf32 else 2e-2)
+    torch.backends.cudnn.allow_tf32, torch.backends.cuda.matmul.allow_tf32 = old
+    del yr, yd
+
+    # full one-hour step on synthetic physical-scale inputs: regression + 18-step Heun diffusion (35 denoiser evals)
+    xs = (model.means + model.stds * torch.randn(1, 99, 512, 640, device=device)).contiguous()
+    cs = model.cond_means + model.cond_stds * torch.randn(1, 26, 512, 640, device=device)
+    sync(); t = time.time()
+    out = model(xs, cs, generator=torch.Generator(device).manual_seed(0))
+    sync()
+    res["full_step_18_heun_steps_seconds"] = round(time.time() - t, 1)
+    res["full_step_finite"] = bool(torch.isfinite(out).all()) and tuple(out.shape) == (1, 99, 512, 640)
+    out2 = model(xs, cs, generator=torch.Generator(device).manual_seed(1))
+    res["different_seeds_differ"] = bool((out != out2).any())
+    return res
+
+
+SMOKES = {"stormcast": smoke_stormcast, "fuxi_ens": smoke_fuxi_ens, "neuralgcm_train": smoke_neuralgcm_train, "weathernext_cyclones": smoke_weathernext_cyclones, "aardvark": smoke_aardvark, "gencast": smoke_gencast, "neuralgcm": smoke_neuralgcm, "aurora": smoke_aurora, "graphcast": smoke_graphcast}
 
 
 def run(name: str, device: str, **kw) -> dict:
@@ -555,5 +647,5 @@ if __name__ == "__main__":
     ap.add_argument("--device", default="cpu")
     ap.add_argument("--pretrained", action="store_true")
     a = ap.parse_args()
-    kw = {"pretrained": a.pretrained} if a.model in ("aurora", "aardvark", "gencast", "weathernext_cyclones", "neuralgcm", "fuxi_ens") else {}
+    kw = {"pretrained": a.pretrained} if a.model in ("aurora", "aardvark", "gencast", "weathernext_cyclones", "neuralgcm", "fuxi_ens", "stormcast") else {}
     print(json.dumps(run(a.model, a.device, **kw)))
