@@ -1055,7 +1055,53 @@ def smoke_unicm(device: str) -> dict:
     return res
 
 
-SMOKES = {"unicm": smoke_unicm, "fuxi_s2s": smoke_fuxi_s2s, "tcn": smoke_tcn, "orca_dl": smoke_orca_dl, "ngcm_precip": smoke_ngcm_precip, "ngcm_precip_train": smoke_ngcm_precip_train, "ngcm_evap": smoke_ngcm_evap, "ace2": smoke_ace2, "arches": smoke_arches, "stormcast": smoke_stormcast, "fuxi_ens": smoke_fuxi_ens, "neuralgcm_train": smoke_neuralgcm_train, "weathernext_cyclones": smoke_weathernext_cyclones, "aardvark": smoke_aardvark, "gencast": smoke_gencast, "neuralgcm": smoke_neuralgcm, "aurora": smoke_aurora, "graphcast": smoke_graphcast}
+def smoke_genfocal(device: str) -> dict:
+    """Lite 3-D U-ViT flow net (random weights; the 47 GB official JAX checkpoints are not loadable): CPU-vs-device consistency on a
+    small config, then a mid-size config (8 snapshots x 64x32 grid, 10 channels, 64-128-128 channels, attention at the coarse
+    levels): one flow-matching training step with backward and an 8-step RK4 sampling."""
+    import time
+
+    from weatherai.models.genfocal import GenFocalNet, GenFocalNetConfig, reflow_loss, sample_flow
+
+    res: dict = {}
+    torch.manual_seed(0)
+    cfg = GenFocalNetConfig.lite(4)
+    m = GenFocalNet(cfg).eval()
+    torch.nn.init.normal_(m.out.conv.weight, std=0.1)
+    x = torch.randn(2, 3, 16, 8, 4)
+    c = {k: torch.randn_like(x) for k in cfg.cond_keys}
+    s = torch.rand(2)
+    with torch.no_grad():
+        ref = m(x, s, c)
+        md = m.to(device)
+        y = md(x.to(device), s.to(device), {k: v.to(device) for k, v in c.items()}).cpu()
+    res["lite_max_abs_vs_cpu"] = float((y - ref).abs().max())
+    big = GenFocalNetConfig(out_channels=10, num_channels=(64, 128, 128), downsample_ratio=(2, 2, 2), num_blocks=2,
+                            noise_embed_dim=128, use_spatial_attention=(False, True, True), use_temporal_attention=(False, True, True), num_heads=8)
+    net = GenFocalNet(big).to(device)
+    res["params"] = sum(p.numel() for p in net.parameters())
+    x0 = torch.randn(2, 8, 64, 32, 10, device=device)
+    x1 = torch.randn_like(x0)
+    cd = {k: torch.randn_like(x0) for k in big.cond_keys}
+    t = time.time()
+    loss = reflow_loss(net, x0, x1, cd)
+    loss.backward()
+    if device.startswith("cuda"):
+        torch.cuda.synchronize()
+    res["train_step_seconds"] = round(time.time() - t, 2)
+    res["grads_finite"] = all(bool(torch.isfinite(p.grad).all()) for p in net.parameters() if p.grad is not None)
+    net.eval()
+    t = time.time()
+    out = sample_flow(net, x0, cd, num_steps=8)
+    if device.startswith("cuda"):
+        torch.cuda.synchronize()
+        res["peak_mem_gb"] = round(torch.cuda.max_memory_allocated() / 1e9, 2)
+    res["sample_seconds"] = round(time.time() - t, 2)
+    res["sample_finite"] = bool(torch.isfinite(out).all())
+    return res
+
+
+SMOKES = {"genfocal": smoke_genfocal, "unicm": smoke_unicm, "fuxi_s2s": smoke_fuxi_s2s, "tcn": smoke_tcn, "orca_dl": smoke_orca_dl, "ngcm_precip": smoke_ngcm_precip, "ngcm_precip_train": smoke_ngcm_precip_train, "ngcm_evap": smoke_ngcm_evap, "ace2": smoke_ace2, "arches": smoke_arches, "stormcast": smoke_stormcast, "fuxi_ens": smoke_fuxi_ens, "neuralgcm_train": smoke_neuralgcm_train, "weathernext_cyclones": smoke_weathernext_cyclones, "aardvark": smoke_aardvark, "gencast": smoke_gencast, "neuralgcm": smoke_neuralgcm, "aurora": smoke_aurora, "graphcast": smoke_graphcast}
 
 
 def run(name: str, device: str, **kw) -> dict:
