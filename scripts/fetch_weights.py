@@ -13,4 +13,20 @@ def fetch_stormcast(out: str, log=print) -> None:
     log({f: os.path.getsize(os.path.join(out, f)) for f in sorted(os.listdir(out)) if os.path.isfile(os.path.join(out, f))})
 
 
-FETCHERS = {"stormcast": fetch_stormcast}
+def fetch_arches(out: str, log=print) -> None:
+    """HF gcouairon/ArchesWeather (BSD): ArchesWeatherGen checkpoint (1.9 GB, embeds the 4 deterministic members) + det seed0, geoarches stats
+    files (BSD, from GitHub) and a 4-step WeatherBench2 ERA5 sample (public GCS) for the real-case check."""
+    from weatherai.models.arches.convert import download
+
+    log("downloading gcouairon/ArchesWeather + geoarches stats ...")
+    download(out)
+    try:
+        import subprocess, sys
+
+        subprocess.run([sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), "fetch_wb2_sample.py"), os.path.join(out, "wb2_sample_2020.nc")], check=True)
+    except Exception as e:  # optional
+        log(f"WB2 sample not fetched: {e!r}")
+    log({f: os.path.getsize(os.path.join(out, f)) for f in sorted(os.listdir(out)) if os.path.isfile(os.path.join(out, f))})
+
+
+FETCHERS = {"stormcast": fetch_stormcast, "arches": fetch_arches}

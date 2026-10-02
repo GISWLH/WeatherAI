@@ -620,7 +620,104 @@ def smoke_stormcast(device: str, pretrained: bool = False) -> dict:
     return res
 
 
-SMOKES = {"stormcast": smoke_stormcast, "fuxi_ens": smoke_fuxi_ens, "neuralgcm_train": smoke_neuralgcm_train, "weathernext_cyclones": smoke_weathernext_cyclones, "aardvark": smoke_aardvark, "gencast": smoke_gencast, "neuralgcm": smoke_neuralgcm, "aurora": smoke_aurora, "graphcast": smoke_graphcast}
+def smoke_arches(device: str, pretrained: bool = False) -> dict:
+    """Lite: det + gen forward/train/sample. Pretrained: official ArchesWeatherGen checkpoint (4 embedded deterministic members + generative
+    network; HF gcouairon/ArchesWeather, BSD) strict-loaded; checked against CPU reference slices (random inputs; the CPU model is
+    parity-checked vs geoarches at full size) and run on a real ERA5 case (WeatherBench2, 2020-06-01 12Z) -> +24 h vs persistence."""
+    import os
+    import time
+
+    import numpy as np
+    from weatherai.models.arches import ArchesWeatherGen_lite, ArchesWeather_lite
+
+    res: dict = {}
+    det = ArchesWeather_lite().to(device).train()
+    H, W = det.cfg.img_size[1], det.cfg.img_size[2]
+    mk = lambda: {"surface": torch.randn(1, 4, 1, H, W, device=device), "level": torch.randn(1, 6, det.cfg.img_size[0], H, W, device=device)}
+    s, p = mk(), mk()
+    out = det(s, p, torch.tensor([6], device=device), torch.tensor([12], device=device))
+    (out["surface"].pow(2).mean() + out["level"].pow(2).mean()).backward()
+    res["lite_det_train_grads_finite"] = all(q.grad is not None and bool(torch.isfinite(q.grad).all()) for q in det.parameters())
+    gen = ArchesWeatherGen_lite().to(device).eval()
+    o = gen.sample(s, p, torch.tensor([6], device=device), torch.tensor([12], device=device), timestamp=torch.tensor([1591012800]), num_steps=3, seed=0)
+    res["lite_gen_sample_finite"] = all(bool(torch.isfinite(v).all()) for v in o.values())
+    if not pretrained:
+        return res
+
+    ck = os.environ.get("ARCHES_CKPT", "/tmp/arches")
+    if not os.path.exists(f"{ck}/archesweathergen_checkpoint.ckpt"):
+        res["error"] = f"weights not found in {ck}; call the Space's fetch_weights endpoint (model=arches) first"
+        return res
+    from weatherai.models.arches import denormalize, load_official_gen, normalize, wb2_to_state
+
+    t = time.time()
+    model, st = load_official_gen(ck)
+    res["load_strict_seconds"] = round(time.time() - t, 1)
+    res["members"] = len(model.det_model.core)
+    t = time.time()
+    model = model.to(device)
+    res["to_device_seconds"] = round(time.time() - t, 1)
+
+    def sync():
+        if device.startswith("cuda"):
+            torch.cuda.synchronize()
+
+    ref = np.load(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "tests", "models", "arches", "data", "ref_cpu_fp32.npz"))
+    g = torch.Generator().manual_seed(0)
+    rs = lambda: {"surface": torch.randn(1, 4, 1, 121, 240, generator=g) * 0.7, "level": torch.randn(1, 6, 13, 121, 240, generator=g) * 0.7}
+    s0, p0, noise = rs(), rs(), rs()
+    dv = lambda d: {k: v.to(device) for k, v in d.items()}
+    month, hour, ts = torch.tensor([6], device=device), torch.tensor([12], device=device), torch.tensor([1591012800])
+    rel = lambda a, b: float(np.linalg.norm(a - b) / np.linalg.norm(b))
+    old = (torch.backends.cudnn.allow_tf32, torch.backends.cuda.matmul.allow_tf32)
+    torch.backends.cudnn.allow_tf32 = torch.backends.cuda.matmul.allow_tf32 = False
+    with torch.no_grad():
+        sync(); t = time.time()
+        d = model.det_model.core[2](dv(s0), dv(p0), month, hour); sync()
+        res["det_member_forward_seconds"] = round(time.time() - t, 2)
+        res["rel_err_det_skip_member_vs_cpu"] = max(rel(d["surface"][..., ::7, ::11].cpu().numpy(), ref["det_skip_surface"]),
+                                                    rel(d["level"][..., ::7, ::11].cpu().numpy(), ref["det_skip_level"]))
+        avg = model.det_model(dv(s0), dv(p0), month, hour)
+        o5 = model.sample(dv(s0), dv(p0), month, hour, timestamp=ts, num_steps=5, noise=dv(noise), pred_state=avg)
+        res["rel_err_5step_sample_vs_cpu"] = max(rel(o5["surface"][..., ::7, ::11].cpu().numpy(), ref["sample5_surface"]),
+                                                 rel(o5["level"][..., ::7, ::11].cpu().numpy(), ref["sample5_level"]))
+    torch.backends.cudnn.allow_tf32, torch.backends.cuda.matmul.allow_tf32 = old
+    res["matches_cpu_tf32_off"] = res["rel_err_det_skip_member_vs_cpu"] < 1e-3 and res["rel_err_5step_sample_vs_cpu"] < 1e-3
+
+    # real ERA5 case (WeatherBench2 1.5 deg) -> +24 h, latitude-weighted RMSE vs persistence
+    f = os.path.join(ck, "wb2_sample_2020.nc")
+    if os.path.exists(f):
+        import xarray as xr
+
+        ds = xr.open_dataset(f)
+        tt = list(ds.time.values)
+        raw = {x: dv(wb2_to_state(ds, x)) for x in tt}
+        w = torch.cos(torch.linspace(torch.pi / 2, -torch.pi / 2, 121, device=device))[None, :, None]
+        w = w / w.mean()
+        z500 = lambda st_: st_["level"][:, 0, 7]
+        t850 = lambda st_: st_["level"][:, 3, 10]
+        rm = lambda a, b: float(((a - b).pow(2) * w).mean().sqrt())
+        init, truth = raw[tt[1]], raw[tt[2]]
+        m_, h_ = torch.tensor([6], device=device), torch.tensor([12], device=device)
+        with torch.no_grad():
+            s_, p_ = normalize(init, st), normalize(raw[tt[0]], st)
+            sync(); t = time.time()
+            dd = denormalize(model.det_model(dv(s_), dv(p_), m_, h_), st); sync()
+            res["real_det_mean_seconds"] = round(time.time() - t, 2)
+            sync(); t = time.time()
+            gg = denormalize(model.sample(dv(s_), dv(p_), m_, h_, timestamp=torch.tensor([1591012800]), seed=0, num_steps=25), st); sync()
+            res["real_gen_member_25step_seconds"] = round(time.time() - t, 2)
+        res["real_case"] = str(tt[1])
+        res["rmse_z500_persistence"] = rm(z500(init), z500(truth)); res["rmse_z500_det_mean"] = rm(z500(dd), z500(truth)); res["rmse_z500_gen_member"] = rm(z500(gg), z500(truth))
+        res["rmse_t850_persistence"] = rm(t850(init), t850(truth)); res["rmse_t850_det_mean"] = rm(t850(dd), t850(truth)); res["rmse_t850_gen_member"] = rm(t850(gg), t850(truth))
+        res["det_beats_persistence_z500_t850"] = res["rmse_z500_det_mean"] < res["rmse_z500_persistence"] and res["rmse_t850_det_mean"] < res["rmse_t850_persistence"]
+        res["gen_member_finite"] = all(bool(torch.isfinite(v).all()) for v in gg.values())
+    else:
+        res["real_case"] = "wb2_sample_2020.nc not present (fetch_weights arches downloads it)"
+    return res
+
+
+SMOKES = {"arches": smoke_arches, "stormcast": smoke_stormcast, "fuxi_ens": smoke_fuxi_ens, "neuralgcm_train": smoke_neuralgcm_train, "weathernext_cyclones": smoke_weathernext_cyclones, "aardvark": smoke_aardvark, "gencast": smoke_gencast, "neuralgcm": smoke_neuralgcm, "aurora": smoke_aurora, "graphcast": smoke_graphcast}
 
 
 def run(name: str, device: str, **kw) -> dict:
@@ -647,5 +744,5 @@ if __name__ == "__main__":
     ap.add_argument("--device", default="cpu")
     ap.add_argument("--pretrained", action="store_true")
     a = ap.parse_args()
-    kw = {"pretrained": a.pretrained} if a.model in ("aurora", "aardvark", "gencast", "weathernext_cyclones", "neuralgcm", "fuxi_ens", "stormcast") else {}
+    kw = {"pretrained": a.pretrained} if a.model in ("aurora", "aardvark", "gencast", "weathernext_cyclones", "neuralgcm", "fuxi_ens", "stormcast", "arches") else {}
     print(json.dumps(run(a.model, a.device, **kw)))

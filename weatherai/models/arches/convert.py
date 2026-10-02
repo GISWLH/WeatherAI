@@ -58,7 +58,7 @@ def _masks(stats_dir):
     return torch.load(os.path.join(stats_dir, "archesweather_constant_masks.pt"), weights_only=True)
 
 
-def _sd(path):
+def _sd(path):  # the Lightning checkpoint pickles omegaconf objects (hyper-parameters) -> `pip install omegaconf`
     return torch.load(path, map_location="cpu", weights_only=False)["state_dict"]
 
 
