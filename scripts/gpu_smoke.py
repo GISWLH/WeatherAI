@@ -786,6 +786,55 @@ def smoke_ace2(device: str, pretrained: bool = False) -> dict:
     return res
 
 
+def smoke_tcn(device: str, pretrained: bool = False) -> dict:
+    """Lite: random-weight TCN_M forward/backward. Pretrained: official TCN_M checkpoint (Zenodo 15024028, CC-BY-4.0) strict-loaded; the six generators + chooser
+    for 4 real North-Indian-Ocean windows (TCND, CC-BY-4.0, stored in tests/) compared with CPU reference outputs at fixed noise, then a 6-member sample."""
+    import os
+    import time
+
+    import numpy as np
+    from weatherai.models.tropicyclonenet import TCNM
+    from weatherai.models.tropicyclonenet.model import ENV_DIMS, ENV_KEYS
+
+    res: dict = {}
+    m0 = TCNM().to(device)
+    B = 3
+    env = {k: torch.rand(B, 8, d, device=device) for k, d in zip(ENV_KEYS, ENV_DIMS)}
+    gens, logits = m0.all_generators(torch.randn(8, B, 4, device=device) * 0.1, torch.rand(B, 1, 8, 64, 64, device=device), env, torch.randn(B, 16, device=device))
+    (gens.square().mean() + logits.square().mean()).backward()
+    res["lite_train_grads_finite"] = all(bool(torch.isfinite(p.grad).all()) for p in m0.parameters() if p.grad is not None)
+    if not pretrained:
+        return res
+    ck = os.environ.get("TCN_CKPT", "/tmp/tcn/checkpoint_with_model_16000.pt")
+    if not os.path.exists(ck):
+        res["error"] = f"checkpoint not found at {ck}; call the Space's fetch_weights endpoint (model=tcn) first"
+        return res
+    from weatherai.models.tropicyclonenet import load_official
+    t = time.time()
+    m = load_official(ck, device=device)
+    res["load_strict_seconds"] = round(time.time() - t, 1)
+    res["params"] = sum(p.numel() for p in m.parameters())
+    r = np.load(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "tests", "models", "tropicyclonenet", "data", "ref_ni_fani.npz"))
+    tt = lambda k: torch.tensor(r[k], device=device)
+    env = {k[4:]: tt(k) for k in r.files if k.startswith("env_")}
+    old = (torch.backends.cudnn.allow_tf32, torch.backends.cuda.matmul.allow_tf32)
+    torch.backends.cudnn.allow_tf32 = torch.backends.cuda.matmul.allow_tf32 = False
+    try:
+        with torch.no_grad():
+            g, lg = m.all_generators(tt("obs_traj_rel"), tt("image_obs"), env, tt("noise"))
+            samp, cls = m.sample(tt("obs_traj_rel"), tt("image_obs"), env, num_samples=6)
+        if device.startswith("cuda"):
+            torch.cuda.synchronize()
+    finally:
+        torch.backends.cudnn.allow_tf32, torch.backends.cuda.matmul.allow_tf32 = old
+    res["generators_max_abs_vs_cpu"] = float((g.cpu() - torch.tensor(r["gens"])).abs().max())
+    res["chooser_logits_max_abs_vs_cpu"] = float((lg.cpu() - torch.tensor(r["logits"])).abs().max())
+    res["sample_shape"] = list(samp.shape)
+    res["finite"] = bool(torch.isfinite(samp).all())
+    res["matches_cpu_1e-3"] = res["generators_max_abs_vs_cpu"] < 1e-3 and res["chooser_logits_max_abs_vs_cpu"] < 1e-3
+    return res
+
+
 def smoke_orca_dl(device: str, pretrained: bool = False) -> dict:
     """Lite: small ORCA-DL forward/backward. Pretrained: official seed_1 checkpoint (HF dataset JayKuo/ORCA-DL-data; licence not stated, not committed)
     strict-loaded, 7-month rollout (feedback at month 6) from the official GODAS demo input, compared with the CPU reference fields."""
@@ -899,7 +948,7 @@ def smoke_ngcm_evap(device: str, pretrained: bool = False) -> dict:
     return _smoke_ngcm_precip_impl("evap", False)
 
 
-SMOKES = {"orca_dl": smoke_orca_dl, "ngcm_precip": smoke_ngcm_precip, "ngcm_precip_train": smoke_ngcm_precip_train, "ngcm_evap": smoke_ngcm_evap, "ace2": smoke_ace2, "arches": smoke_arches, "stormcast": smoke_stormcast, "fuxi_ens": smoke_fuxi_ens, "neuralgcm_train": smoke_neuralgcm_train, "weathernext_cyclones": smoke_weathernext_cyclones, "aardvark": smoke_aardvark, "gencast": smoke_gencast, "neuralgcm": smoke_neuralgcm, "aurora": smoke_aurora, "graphcast": smoke_graphcast}
+SMOKES = {"tcn": smoke_tcn, "orca_dl": smoke_orca_dl, "ngcm_precip": smoke_ngcm_precip, "ngcm_precip_train": smoke_ngcm_precip_train, "ngcm_evap": smoke_ngcm_evap, "ace2": smoke_ace2, "arches": smoke_arches, "stormcast": smoke_stormcast, "fuxi_ens": smoke_fuxi_ens, "neuralgcm_train": smoke_neuralgcm_train, "weathernext_cyclones": smoke_weathernext_cyclones, "aardvark": smoke_aardvark, "gencast": smoke_gencast, "neuralgcm": smoke_neuralgcm, "aurora": smoke_aurora, "graphcast": smoke_graphcast}
 
 
 def run(name: str, device: str, **kw) -> dict:

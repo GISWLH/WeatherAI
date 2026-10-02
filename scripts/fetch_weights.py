@@ -54,4 +54,12 @@ def fetch_orca_dl(out: str, log=print) -> None:
     log("done")
 
 
-FETCHERS = {"orca_dl": fetch_orca_dl, "ace2": fetch_ace2, "stormcast": fetch_stormcast, "arches": fetch_arches}
+def fetch_tcn(out: str, log=print) -> None:
+    """Zenodo 15024028 (CC-BY-4.0): TCN_M checkpoint 56 MB."""
+    from weatherai.models.tropicyclonenet import download
+
+    log("downloading TCN_M checkpoint ...")
+    log(download(out))
+
+
+FETCHERS = {"tcn": fetch_tcn, "orca_dl": fetch_orca_dl, "ace2": fetch_ace2, "stormcast": fetch_stormcast, "arches": fetch_arches}
