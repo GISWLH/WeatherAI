@@ -6,6 +6,7 @@ arXiv:2412.12971; ArchesWeatherGen, Sci. Adv. 12, eadx2372, 2026). Official code
 """
 from __future__ import annotations
 
+import dataclasses
 import math
 from dataclasses import dataclass, field
 
@@ -40,6 +41,7 @@ class ArchesConfig:
     swiglu: bool = True
     patch_size: tuple = (2, 2, 2)
     n_const: int = 3                       # land-sea mask, soil type, orography (constant fields)
+    add_input_state: bool = False          # "skip" deterministic members predict a residual: out = net(x) + state
 
     @property
     def tensor_size(self):
@@ -150,7 +152,10 @@ class ArchesWeather(nn.Module):
 
     def forward(self, state: State, prev_state: State, month: torch.Tensor, hour: torch.Tensor) -> State:
         cond = self.month_embedder(month) + self.hour_embedder(hour)
-        return self.embedder.decode(self.backbone(self.embedder.encode(state, prev_state), cond))
+        out = self.embedder.decode(self.backbone(self.embedder.encode(state, prev_state), cond))
+        if self.cfg.add_input_state:
+            out = {k: out[k] + state[k] for k in out}
+        return out
 
 
 class _DetEnsemble(nn.Module):
@@ -193,8 +198,10 @@ class ArchesWeatherGen(nn.Module):
         self.month_embedder = TimestepEmbedder(self.cfg.cond_dim)
         self.hour_embedder = TimestepEmbedder(self.cfg.cond_dim)
         self.timestep_embedder = TimestepEmbedder(self.cfg.cond_dim)
-        dcfg = det_cfg or ArchesConfig(depth_multiplier=2, n_concatenated_states=1)
-        self.det_model = _DetEnsemble([ArchesWeather(dcfg, constant_masks) for _ in range(n_det)])
+        # release order: archesweather-m-seed0, -seed1, -m-skip-seed0, -m-skip-seed1 (the two "skip" members add the input state)
+        base = det_cfg or ArchesConfig(depth_multiplier=2, n_concatenated_states=1)
+        dcfgs = [dataclasses.replace(base, add_input_state=(i >= n_det // 2)) for i in range(n_det)] if det_cfg is None or n_det > 1 else [base]
+        self.det_model = _DetEnsemble([ArchesWeather(c, constant_masks) for c in dcfgs])
         self.num_train_timesteps = num_train_timesteps
         c = self.cfg
         self.register_buffer("state_scaler_surface", torch.ones(c.surface_ch, 1, 1, 1), persistent=False)

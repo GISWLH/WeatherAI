@@ -77,3 +77,18 @@ def load_official_gen(ckpt_dir: str, device="cpu") -> tuple[ArchesWeatherGen, di
     m.state_scaler_surface.copy_(st["scaler"]["surface"])
     m.state_scaler_level.copy_(st["scaler"]["level"])
     return m.to(device).eval(), st
+
+
+def wb2_to_state(ds, time) -> State:
+    """WeatherBench2 ERA5 1.5-degree (240x121) -> raw (un-normalised) model state: latitude north->south, longitude starting at 180 deg
+    (the official ``Era5Dataset.convert_to_tensordict`` flips latitude and rolls longitude by half the grid)."""
+    d = ds.sel(time=time)
+    surf = torch.stack([torch.from_numpy(d[v].transpose("latitude", "longitude").values) for v in SURFACE])[:, None]  # (4,1,H,W)
+    lev = torch.stack([torch.from_numpy(d[v].sel(level=LEVELS).transpose("level", "latitude", "longitude").values) for v in LEVEL])
+    out = {"surface": surf.float(), "level": lev.float()}
+    return {k: v.flip(-2).roll(v.shape[-1] // 2, -1)[None] for k, v in out.items()}
+
+
+def state_to_wb2_grid(state: State):
+    """Inverse layout change (for plotting / comparison with WeatherBench2): (lat south->north, lon 0..358.5)."""
+    return {k: v.roll(-(v.shape[-1] // 2), -1).flip(-2) for k, v in state.items()}

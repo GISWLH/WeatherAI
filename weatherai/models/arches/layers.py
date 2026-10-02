@@ -74,14 +74,14 @@ class EarthAttention3D(nn.Module):
 
 
 class SwiGLU(nn.Module):
-    """timm-compatible SwiGLU (``fc1_g``/``fc1_x``/``fc2``)."""
+    """timm-compatible gated MLP (GELU gate) (``fc1_g``/``fc1_x``/``fc2``)."""
 
     def __init__(self, dim, hidden):
         super().__init__()
         self.fc1_g, self.fc1_x, self.fc2 = nn.Linear(dim, hidden), nn.Linear(dim, hidden), nn.Linear(hidden, dim)
 
     def forward(self, x):
-        return self.fc2(F.silu(self.fc1_g(x)) * self.fc1_x(x))
+        return self.fc2(F.gelu(self.fc1_g(x)) * self.fc1_x(x))  # the official config passes act_layer=GELU to timm SwiGLU
 
 
 class Mlp(nn.Module):
