@@ -44,4 +44,14 @@ def fetch_ace2(out: str, log=print) -> None:
     log({f: os.path.getsize(os.path.join(out, f)) for f in sorted(os.listdir(out)) if os.path.isfile(os.path.join(out, f))})
 
 
-FETCHERS = {"ace2": fetch_ace2, "stormcast": fetch_stormcast, "arches": fetch_arches}
+def fetch_orca_dl(out: str, log=print) -> None:
+    """HF dataset JayKuo/ORCA-DL-data (licence not stated): seed_1.bin 2.16 GB + monthly statistics, plus the official demo input from GitHub."""
+    from weatherai.models.orca_dl import download, download_example
+
+    log("downloading JayKuo/ORCA-DL-data seed_1 + stat ...")
+    download(out, seeds=(1,))
+    download_example(os.path.join(out, "example"))
+    log("done")
+
+
+FETCHERS = {"orca_dl": fetch_orca_dl, "ace2": fetch_ace2, "stormcast": fetch_stormcast, "arches": fetch_arches}
