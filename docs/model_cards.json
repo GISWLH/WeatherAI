@@ -1,0 +1,1241 @@
+{
+ "orca-dl": {
+  "key": "orca-dl/seed_N",
+  "model": "orca-dl",
+  "checkpoint": "seed_1 .. seed_8 (one checkpoint per training seed)",
+  "backend": "torch-native",
+  "product": "seasonal-monthly",
+  "code_source": "https://github.com/OpenEarthLab/ORCA-DL (official PyTorch; native dependency-light port in weatherai/models/orca_dl)",
+  "code_licence": "official repo: no LICENSE file (all rights reserved by default); this port: MIT",
+  "weights_source": "https://huggingface.co/datasets/JayKuo/ORCA-DL-data (model_weights/seed_{1..8}.bin, stat/{mean,std}/*.npy); mirror: OneDrive link in the official README",
+  "weights_licence": "not stated (HF dataset card has no licence); Zenodo 15383228 (CC-BY-4.0) covers data only",
+  "weights_redistributable": "no",
+  "files": [
+   "model_weights/seed_N.bin (2.16 GB each)",
+   "stat/mean/<godas_var>.npy",
+   "stat/std/<godas_var>.npy"
+  ],
+  "parameters": 539942562,
+  "inputs": [
+   {
+    "name": "so",
+    "units": "g/kg",
+    "long_name": "sea water salinity",
+    "levels": [
+     10,
+     15,
+     30,
+     50,
+     75,
+     100,
+     125,
+     150,
+     200,
+     250,
+     300,
+     400,
+     500,
+     600,
+     800,
+     1000
+    ],
+    "level_units": "m",
+    "source_name": "salt (GODAS, kg/kg -> x1000)",
+    "notes": ""
+   },
+   {
+    "name": "thetao",
+    "units": "degC",
+    "long_name": "sea water potential temperature",
+    "levels": [
+     10,
+     15,
+     30,
+     50,
+     75,
+     100,
+     125,
+     150,
+     200,
+     250,
+     300,
+     400,
+     500,
+     600,
+     800,
+     1000
+    ],
+    "level_units": "m",
+    "source_name": "pottmp (GODAS, K -> -273.15)",
+    "notes": ""
+   },
+   {
+    "name": "tos",
+    "units": "degC",
+    "long_name": "sea surface temperature of the model's top layer (CMIP6 tos during training)",
+    "levels": [],
+    "level_units": "",
+    "source_name": "sst in the official GODAS example = GODAS 5 m potential temperature",
+    "notes": "With GODAS initial conditions this is a near-surface water temperature PROXY (5 m), not a satellite/bulk SST."
+   },
+   {
+    "name": "uo",
+    "units": "m/s",
+    "long_name": "eastward sea water velocity",
+    "levels": [
+     10,
+     15,
+     30,
+     50,
+     75,
+     100,
+     125,
+     150,
+     200,
+     250,
+     300,
+     400,
+     500,
+     600,
+     800,
+     1000
+    ],
+    "level_units": "m",
+    "source_name": "ucur (GODAS)",
+    "notes": ""
+   },
+   {
+    "name": "vo",
+    "units": "m/s",
+    "long_name": "northward sea water velocity",
+    "levels": [
+     10,
+     15,
+     30,
+     50,
+     75,
+     100,
+     125,
+     150,
+     200,
+     250,
+     300,
+     400,
+     500,
+     600,
+     800,
+     1000
+    ],
+    "level_units": "m",
+    "source_name": "vcur (GODAS)",
+    "notes": ""
+   },
+   {
+    "name": "zos",
+    "units": "m",
+    "long_name": "sea surface height above geoid",
+    "levels": [],
+    "level_units": "",
+    "source_name": "sshg (GODAS)",
+    "notes": ""
+   },
+   {
+    "name": "tauu",
+    "units": "N/m^2",
+    "long_name": "eastward surface wind stress on the ocean (positive eastward)",
+    "levels": [],
+    "level_units": "",
+    "source_name": "uflx (GODAS)",
+    "notes": "Official example: equatorial-Pacific January mean -0.047 N/m^2 (easterly trades -> negative)."
+   },
+   {
+    "name": "tauv",
+    "units": "N/m^2",
+    "long_name": "northward surface wind stress on the ocean",
+    "levels": [],
+    "level_units": "",
+    "source_name": "vflx (GODAS)",
+    "notes": ""
+   }
+  ],
+  "history": "1 monthly-mean state (the initial month); wind stress of the initial month only",
+  "grid": "regular 1 deg, lat -63.5..63.5 (128, south->north), lon 0.5..359.5 (360); official preprocessing: cdo remapbil",
+  "vertical": "16 depth levels 10,15,30,50,75,100,125,150,200,250,300,400,500,600,800,1000 m; official preprocessing: cdo intlevel (linear, no extrapolation)",
+  "normalisation": "x_n = (x - mean[m]) / std[m] per grid point and level, m = calendar month of the field (0 = January); input uses the initial month, lead L is de-normalised with month (m0 + L) % 12 (official demo.ipynb); NaN -> 0 after normalisation (official)",
+  "outputs": [
+   {
+    "name": "so",
+    "units": "g/kg",
+    "long_name": "sea water salinity",
+    "levels": [
+     10,
+     15,
+     30,
+     50,
+     75,
+     100,
+     125,
+     150,
+     200,
+     250,
+     300,
+     400,
+     500,
+     600,
+     800,
+     1000
+    ],
+    "level_units": "m",
+    "source_name": "salt (GODAS, kg/kg -> x1000)",
+    "notes": ""
+   },
+   {
+    "name": "thetao",
+    "units": "degC",
+    "long_name": "sea water potential temperature",
+    "levels": [
+     10,
+     15,
+     30,
+     50,
+     75,
+     100,
+     125,
+     150,
+     200,
+     250,
+     300,
+     400,
+     500,
+     600,
+     800,
+     1000
+    ],
+    "level_units": "m",
+    "source_name": "pottmp (GODAS, K -> -273.15)",
+    "notes": ""
+   },
+   {
+    "name": "tos",
+    "units": "degC",
+    "long_name": "sea surface temperature of the model's top layer (CMIP6 tos during training)",
+    "levels": [],
+    "level_units": "",
+    "source_name": "sst in the official GODAS example = GODAS 5 m potential temperature",
+    "notes": "With GODAS initial conditions this is a near-surface water temperature PROXY (5 m), not a satellite/bulk SST."
+   },
+   {
+    "name": "uo",
+    "units": "m/s",
+    "long_name": "eastward sea water velocity",
+    "levels": [
+     10,
+     15,
+     30,
+     50,
+     75,
+     100,
+     125,
+     150,
+     200,
+     250,
+     300,
+     400,
+     500,
+     600,
+     800,
+     1000
+    ],
+    "level_units": "m",
+    "source_name": "ucur (GODAS)",
+    "notes": ""
+   },
+   {
+    "name": "vo",
+    "units": "m/s",
+    "long_name": "northward sea water velocity",
+    "levels": [
+     10,
+     15,
+     30,
+     50,
+     75,
+     100,
+     125,
+     150,
+     200,
+     250,
+     300,
+     400,
+     500,
+     600,
+     800,
+     1000
+    ],
+    "level_units": "m",
+    "source_name": "vcur (GODAS)",
+    "notes": ""
+   },
+   {
+    "name": "zos",
+    "units": "m",
+    "long_name": "sea surface height above geoid",
+    "levels": [],
+    "level_units": "",
+    "source_name": "sshg (GODAS)",
+    "notes": ""
+   }
+  ],
+  "time_step": "1 month (monthly means)",
+  "time_semantics": "lead L = monthly mean of calendar month (init month + L); the init month is the monthly mean used as input",
+  "forcings": [
+   {
+    "name": "tauu, tauv",
+    "units": "N/m^2",
+    "when": "init only",
+    "notes": "the model has no future-forcing input: wind stress is encoded once from the initial month"
+   }
+  ],
+  "spatial_mask": "ocean points where the GODAS input is defined (per variable; ~31-34 % of the 128x360 domain is NaN); domain stops at 63.5S/63.5N -> no Arctic, no Southern Ocean poleward of 63.5S; outputs are masked to NaN outside the input-valid mask, never zero-filled",
+  "ensemble": "no stochastic sampling; members = different training seeds (seed_1..8) of the same model. Official predict.py averages the seeds' normalised outputs. Seeds are NOT independent models.",
+  "technical_max_lead": {
+   "value": null,
+   "unit": "month",
+   "reason": "autoregressive: lead-time experts for 1..6, the lead-6 prediction is fed back; official predict.sh uses 24 months; no hard limit in code"
+  },
+  "validated_lead": {
+   "value": null,
+   "unit": "month",
+   "reason": "no independent multi-init hindcast run by WeatherAI"
+  },
+  "status": {
+   "implemented": {
+    "state": "yes",
+    "detail": "native PyTorch port; parameter names follow the official module",
+    "ref": "weatherai/models/orca_dl",
+    "date": ""
+   },
+   "weights_obtainable": {
+    "state": "yes",
+    "detail": "HF dataset (seeds 1-8) + OneDrive; download with weatherai.models.orca_dl.download",
+    "ref": "https://huggingface.co/datasets/JayKuo/ORCA-DL-data",
+    "date": "2026-10-08"
+   },
+   "real_data_inference": {
+    "state": "partial",
+    "detail": "one GODAS initial state (Jan 1980, official example), seed_1, 11 leads, CPU and HF GPU; SST_S2S reported a monthly inference with the official checkpoint (external)",
+    "ref": "docs/results/orca_dl_real_case.json",
+    "date": "2026-10-02"
+   },
+   "official_parity": {
+    "state": "yes",
+    "detail": "7 monthly steps vs official modules, seed_1, rel. L2 <= 7.3e-7",
+    "ref": "docs/results/orca_dl_parity.json",
+    "date": "2026-10-02"
+   },
+   "multi_init_long_rollout": {
+    "state": "no",
+    "detail": "seeds 2-8, other initial months/years and >11-month rollouts not run",
+    "ref": "",
+    "date": ""
+   },
+   "independent_hindcast": {
+    "state": "no",
+    "detail": "no hindcast skill computed by WeatherAI",
+    "ref": "",
+    "date": ""
+   }
+  },
+  "paper": "Guo et al., Sci. Adv. 11, eadu2488 (2025)",
+  "paper_claims": "seasonal-to-decadal ocean prediction skill reported in the paper (not reproduced here)",
+  "resources": "GPU: 2.4 GB peak, 7 steps 0.82 s (HF ZeroGPU); CPU fp32 feasible (~2.2 GB weights per seed)",
+  "limitations": [
+   "GODAS 'sst' is 5 m potential temperature: SST proxy, keep separate from OISST/ERA5 SST",
+   "domain limited to 63.5S-63.5N",
+   "wind stress held at the initial month",
+   "GODAS raw uflx/vflx sign convention not re-checked against PSL files here (PSL unreachable); the official example is eastward-positive"
+  ],
+  "api": "weatherai.inference.orca_dl.ORCADLForecaster",
+  "runnable": true
+ },
+ "fuxi-s2s": {
+  "key": "fuxi-s2s/model-1.0",
+  "model": "fuxi-s2s",
+  "checkpoint": "model-1.0 (fuxi_s2s.onnx + fp16 external data)",
+  "backend": "onnx-official",
+  "product": "subseasonal-daily",
+  "code_source": "https://github.com/tpys/FuXi-S2S (official ONNX driver inference.py / data_util.py); native PyTorch port in weatherai/models/fuxi_s2s (secondary backend)",
+  "code_licence": "official driver: see upstream repo; this port: MIT",
+  "weights_source": "Zenodo 10.5281/zenodo.15718402, model-1.0.tar (2.08 GB)",
+  "weights_licence": "CC-BY-NC-ND-4.0",
+  "weights_redistributable": "no",
+  "files": [
+   "model-1.0/fuxi_s2s.onnx (1.6 MB graph)",
+   "model-1.0/fuxi_s2s (2.08 GB fp16 external data)",
+   "data/mask.nc (GitHub)"
+  ],
+  "parameters": 1038652304,
+  "inputs": [
+   {
+    "name": "z",
+    "units": "m^2/s^2",
+    "long_name": "geopotential",
+    "levels": [
+     1000,
+     925,
+     850,
+     700,
+     600,
+     500,
+     400,
+     300,
+     250,
+     200,
+     150,
+     100,
+     50
+    ],
+    "level_units": "hPa",
+    "source_name": "geopotential",
+    "notes": ""
+   },
+   {
+    "name": "t",
+    "units": "K",
+    "long_name": "temperature",
+    "levels": [
+     1000,
+     925,
+     850,
+     700,
+     600,
+     500,
+     400,
+     300,
+     250,
+     200,
+     150,
+     100,
+     50
+    ],
+    "level_units": "hPa",
+    "source_name": "temperature",
+    "notes": ""
+   },
+   {
+    "name": "u",
+    "units": "m/s",
+    "long_name": "u wind",
+    "levels": [
+     1000,
+     925,
+     850,
+     700,
+     600,
+     500,
+     400,
+     300,
+     250,
+     200,
+     150,
+     100,
+     50
+    ],
+    "level_units": "hPa",
+    "source_name": "u_component_of_wind",
+    "notes": ""
+   },
+   {
+    "name": "v",
+    "units": "m/s",
+    "long_name": "v wind",
+    "levels": [
+     1000,
+     925,
+     850,
+     700,
+     600,
+     500,
+     400,
+     300,
+     250,
+     200,
+     150,
+     100,
+     50
+    ],
+    "level_units": "hPa",
+    "source_name": "v_component_of_wind",
+    "notes": ""
+   },
+   {
+    "name": "q",
+    "units": "kg/kg",
+    "long_name": "specific humidity",
+    "levels": [
+     1000,
+     925,
+     850,
+     700,
+     600,
+     500,
+     400,
+     300,
+     250,
+     200,
+     150,
+     100,
+     50
+    ],
+    "level_units": "hPa",
+    "source_name": "specific_humidity",
+    "notes": ""
+   },
+   {
+    "name": "t2m",
+    "units": "K",
+    "long_name": "2 m temperature",
+    "levels": [],
+    "level_units": "",
+    "source_name": "2m_temperature",
+    "notes": ""
+   },
+   {
+    "name": "d2m",
+    "units": "K",
+    "long_name": "2 m dewpoint",
+    "levels": [],
+    "level_units": "",
+    "source_name": "2m_dewpoint_temperature",
+    "notes": ""
+   },
+   {
+    "name": "sst",
+    "units": "K",
+    "long_name": "ERA5 sea surface temperature (NaN over land, official mask.nc)",
+    "levels": [],
+    "level_units": "",
+    "source_name": "sea_surface_temperature",
+    "notes": ""
+   },
+   {
+    "name": "ttr",
+    "units": "W/m^2",
+    "long_name": "top net thermal radiation as a mean flux",
+    "levels": [],
+    "level_units": "",
+    "source_name": "top_net_thermal_radiation",
+    "notes": "official input builder: ERA5 hourly accumulation [J/m^2] / 3600"
+   },
+   {
+    "name": "10u",
+    "units": "m/s",
+    "long_name": "",
+    "levels": [],
+    "level_units": "",
+    "source_name": "10m_u_component_of_wind",
+    "notes": ""
+   },
+   {
+    "name": "10v",
+    "units": "m/s",
+    "long_name": "",
+    "levels": [],
+    "level_units": "",
+    "source_name": "10m_v_component_of_wind",
+    "notes": ""
+   },
+   {
+    "name": "100u",
+    "units": "m/s",
+    "long_name": "",
+    "levels": [],
+    "level_units": "",
+    "source_name": "100m_u_component_of_wind",
+    "notes": ""
+   },
+   {
+    "name": "100v",
+    "units": "m/s",
+    "long_name": "",
+    "levels": [],
+    "level_units": "",
+    "source_name": "100m_v_component_of_wind",
+    "notes": ""
+   },
+   {
+    "name": "msl",
+    "units": "Pa",
+    "long_name": "mean sea-level pressure",
+    "levels": [],
+    "level_units": "",
+    "source_name": "mean_sea_level_pressure",
+    "notes": ""
+   },
+   {
+    "name": "tcwv",
+    "units": "kg/m^2",
+    "long_name": "total column water vapour",
+    "levels": [],
+    "level_units": "",
+    "source_name": "total_column_water_vapour",
+    "notes": ""
+   },
+   {
+    "name": "tp",
+    "units": "mm/h",
+    "long_name": "precipitation, daily mean of ERA5 hourly accumulations, x1000, clipped to [0, 1000]",
+    "levels": [],
+    "level_units": "",
+    "source_name": "total_precipitation",
+    "notes": "see FUXI_TP_NOTE"
+   }
+  ],
+  "history": "2 consecutive daily means (init day - 1, init day), 76 channels, order = weatherai.models.fuxi_s2s.CHANNELS",
+  "grid": "regular 1.5 deg incl. poles, lat 90..-90 (121, north->south), lon 0..358.5 (240)",
+  "vertical": "13 pressure levels 1000..50 hPa (channel order 1000 first)",
+  "normalisation": "inside the ONNX graph (mean/std initialisers); NaN -> 0; precipitation input channel zeroed by the graph",
+  "outputs": [
+   {
+    "name": "z",
+    "units": "m^2/s^2",
+    "long_name": "geopotential",
+    "levels": [
+     1000,
+     925,
+     850,
+     700,
+     600,
+     500,
+     400,
+     300,
+     250,
+     200,
+     150,
+     100,
+     50
+    ],
+    "level_units": "hPa",
+    "source_name": "geopotential",
+    "notes": ""
+   },
+   {
+    "name": "t",
+    "units": "K",
+    "long_name": "temperature",
+    "levels": [
+     1000,
+     925,
+     850,
+     700,
+     600,
+     500,
+     400,
+     300,
+     250,
+     200,
+     150,
+     100,
+     50
+    ],
+    "level_units": "hPa",
+    "source_name": "temperature",
+    "notes": ""
+   },
+   {
+    "name": "u",
+    "units": "m/s",
+    "long_name": "u wind",
+    "levels": [
+     1000,
+     925,
+     850,
+     700,
+     600,
+     500,
+     400,
+     300,
+     250,
+     200,
+     150,
+     100,
+     50
+    ],
+    "level_units": "hPa",
+    "source_name": "u_component_of_wind",
+    "notes": ""
+   },
+   {
+    "name": "v",
+    "units": "m/s",
+    "long_name": "v wind",
+    "levels": [
+     1000,
+     925,
+     850,
+     700,
+     600,
+     500,
+     400,
+     300,
+     250,
+     200,
+     150,
+     100,
+     50
+    ],
+    "level_units": "hPa",
+    "source_name": "v_component_of_wind",
+    "notes": ""
+   },
+   {
+    "name": "q",
+    "units": "kg/kg",
+    "long_name": "specific humidity",
+    "levels": [
+     1000,
+     925,
+     850,
+     700,
+     600,
+     500,
+     400,
+     300,
+     250,
+     200,
+     150,
+     100,
+     50
+    ],
+    "level_units": "hPa",
+    "source_name": "specific_humidity",
+    "notes": ""
+   },
+   {
+    "name": "t2m",
+    "units": "K",
+    "long_name": "2 m temperature",
+    "levels": [],
+    "level_units": "",
+    "source_name": "2m_temperature",
+    "notes": ""
+   },
+   {
+    "name": "d2m",
+    "units": "K",
+    "long_name": "2 m dewpoint",
+    "levels": [],
+    "level_units": "",
+    "source_name": "2m_dewpoint_temperature",
+    "notes": ""
+   },
+   {
+    "name": "sst",
+    "units": "K",
+    "long_name": "ERA5 sea surface temperature (NaN over land, official mask.nc)",
+    "levels": [],
+    "level_units": "",
+    "source_name": "sea_surface_temperature",
+    "notes": ""
+   },
+   {
+    "name": "ttr",
+    "units": "W/m^2",
+    "long_name": "top net thermal radiation as a mean flux",
+    "levels": [],
+    "level_units": "",
+    "source_name": "top_net_thermal_radiation",
+    "notes": "official input builder: ERA5 hourly accumulation [J/m^2] / 3600"
+   },
+   {
+    "name": "10u",
+    "units": "m/s",
+    "long_name": "",
+    "levels": [],
+    "level_units": "",
+    "source_name": "10m_u_component_of_wind",
+    "notes": ""
+   },
+   {
+    "name": "10v",
+    "units": "m/s",
+    "long_name": "",
+    "levels": [],
+    "level_units": "",
+    "source_name": "10m_v_component_of_wind",
+    "notes": ""
+   },
+   {
+    "name": "100u",
+    "units": "m/s",
+    "long_name": "",
+    "levels": [],
+    "level_units": "",
+    "source_name": "100m_u_component_of_wind",
+    "notes": ""
+   },
+   {
+    "name": "100v",
+    "units": "m/s",
+    "long_name": "",
+    "levels": [],
+    "level_units": "",
+    "source_name": "100m_v_component_of_wind",
+    "notes": ""
+   },
+   {
+    "name": "msl",
+    "units": "Pa",
+    "long_name": "mean sea-level pressure",
+    "levels": [],
+    "level_units": "",
+    "source_name": "mean_sea_level_pressure",
+    "notes": ""
+   },
+   {
+    "name": "tcwv",
+    "units": "kg/m^2",
+    "long_name": "total column water vapour",
+    "levels": [],
+    "level_units": "",
+    "source_name": "total_column_water_vapour",
+    "notes": ""
+   },
+   {
+    "name": "tp",
+    "units": "mm/h",
+    "long_name": "precipitation, daily mean of ERA5 hourly accumulations, x1000, clipped to [0, 1000]",
+    "levels": [],
+    "level_units": "",
+    "source_name": "total_precipitation",
+    "notes": "see FUXI_TP_NOTE"
+   }
+  ],
+  "time_step": "1 day",
+  "time_semantics": "ERA5 daily means; input times = [init-1d, init]; output of step k (0-based) = daily mean of init + (k+1) days",
+  "forcings": [],
+  "spatial_mask": "sst NaN over land in the input (official land_to_nan with data/mask.nc); WeatherAI re-applies the input land mask to the sst output (the network writes values everywhere)",
+  "ensemble": "stochastic latent: two Gaussian draws per step (RandomNormalLike in the ONNX). Official README example: 11 members. WeatherAI default replaces the two draws by graph inputs with seeded noise rng([seed, member, step]) (identical to the internal sampling in distribution, reproducible, shared with the native backend).",
+  "technical_max_lead": {
+   "value": 42,
+   "unit": "day",
+   "reason": "lead-time encoding trained for step 0..41; official total_step = 42; refused beyond"
+  },
+  "validated_lead": {
+   "value": null,
+   "unit": "day",
+   "reason": "no independent hindcast by WeatherAI"
+  },
+  "status": {
+   "implemented": {
+    "state": "yes",
+    "detail": "ONNX runner (official graph) + native PyTorch port",
+    "ref": "weatherai/inference/fuxi_s2s.py",
+    "date": ""
+   },
+   "weights_obtainable": {
+    "state": "yes",
+    "detail": "Zenodo, user download; never redistributed",
+    "ref": "https://zenodo.org/records/15718402",
+    "date": "2026-10-08"
+   },
+   "real_data_inference": {
+    "state": "partial",
+    "detail": "official ERA5 sample (2020-06-01/02): native fp32 1 step + 3-step chain on CPU, 1 step on HF GPU; SST_S2S reported 11 members x 42 days with the official ONNX (external)",
+    "ref": "docs/results/fuxi_s2s_parity.json",
+    "date": "2026-10-02"
+   },
+   "official_parity": {
+    "state": "yes",
+    "detail": "native fp32 vs onnxruntime fp16 graph, same injected noise: step-0 rel. L2 6.3e-6, 3-step chain <= 1.4e-5 (worst channel 1.2e-3); not bitwise (fp16 vs fp32)",
+    "ref": "docs/results/fuxi_s2s_parity.json",
+    "date": "2026-10-02"
+   },
+   "multi_init_long_rollout": {
+    "state": "external",
+    "detail": "42-day x 11-member ONNX run reported by SST_S2S; not run from this repo",
+    "ref": "",
+    "date": ""
+   },
+   "independent_hindcast": {
+    "state": "no",
+    "detail": "no S2S skill (RPSS/CRPS/ACC) computed by WeatherAI",
+    "ref": "",
+    "date": ""
+   }
+  },
+  "paper": "Chen et al., Nat. Commun. 15, 6425 (2024)",
+  "paper_claims": "paper reports S2S skill over 42 days (weeks 3-6) against ECMWF S2S; not reproduced here",
+  "resources": "native fp32: 5.4 GB GPU peak, 0.67 s/step (HF ZeroGPU); ~25 s/step on 8 CPU cores; ONNX fp16 graph on CPU similar",
+  "limitations": [
+   "CC-BY-NC-ND: non-commercial, no derivatives of the weights; outputs must not be presented as an official product",
+   "the native port is a secondary backend verified for 1 step + 3-step chain only",
+   "official ONNX samples noise without a seed; reproducibility needs the WeatherAI noise injection"
+  ],
+  "api": "weatherai.inference.fuxi_s2s.FuXiS2SForecaster",
+  "runnable": true
+ },
+ "ace2": {
+  "key": "ace2/ACE2-ERA5",
+  "model": "ace2",
+  "checkpoint": "ace2_era5_ckpt.tar",
+  "backend": "torch-native",
+  "product": "forced-atmosphere",
+  "code_source": "https://github.com/ai2cm/ace (fme, Apache-2.0); native SFNO + stepper in weatherai/models/ace2",
+  "code_licence": "Apache-2.0",
+  "weights_source": "https://huggingface.co/allenai/ACE2-ERA5",
+  "weights_licence": "Apache-2.0",
+  "weights_redistributable": "yes",
+  "files": [
+   "ace2_era5_ckpt.tar (1.8 GB)",
+   "inference_config.yaml",
+   "initial_conditions/ic_2020.nc",
+   "forcing_data/forcing_2020.nc"
+  ],
+  "parameters": 455831040,
+  "inputs": [
+   {
+    "name": "<44 in_names from the checkpoint>",
+    "units": "physical",
+    "long_name": "prognostic state (8 hybrid-sigma layers + surface) and forcings; names read from stepper.config.in_names at load time",
+    "levels": [],
+    "level_units": "",
+    "source_name": "",
+    "notes": ""
+   }
+  ],
+  "history": "1 state (6-hourly instantaneous)",
+  "grid": "1 deg Gauss-Legendre 180x360",
+  "vertical": "8 hybrid sigma-pressure layers (ak, bk in the checkpoint)",
+  "normalisation": "per-variable scalar mean/std from the checkpoint (stepper.normalizer)",
+  "outputs": [
+   {
+    "name": "<50 out_names from the checkpoint>",
+    "units": "physical",
+    "long_name": "includes PRATEsfc [kg m-2 s-1], TMP2m, surface fluxes",
+    "levels": [],
+    "level_units": "",
+    "source_name": "",
+    "notes": ""
+   }
+  ],
+  "time_step": "6 h",
+  "time_semantics": "instantaneous state every 6 h; fluxes/precipitation are 6-h means",
+  "forcings": [
+   {
+    "name": "surface_temperature",
+    "units": "K",
+    "when": "every step (t+1)",
+    "notes": "SST over ocean (round(ocean_fraction)==1) is PRESCRIBED"
+   },
+   {
+    "name": "ocean_fraction",
+    "units": "1",
+    "when": "every step",
+    "notes": ""
+   },
+   {
+    "name": "sea_ice_fraction",
+    "units": "1",
+    "when": "every step",
+    "notes": ""
+   },
+   {
+    "name": "DSWRFtoa",
+    "units": "W/m^2",
+    "when": "every step (t+1)",
+    "notes": ""
+   },
+   {
+    "name": "global_mean_co2",
+    "units": "mol/mol",
+    "when": "every step",
+    "notes": ""
+   },
+   {
+    "name": "HGTsfc, land_fraction",
+    "units": "m, 1",
+    "when": "static",
+    "notes": ""
+   }
+  ],
+  "spatial_mask": "global; SST taken from the forcing wherever round(ocean_fraction) == 1",
+  "ensemble": "deterministic network; ensembles need IC/forcing perturbations (not implemented)",
+  "technical_max_lead": {
+   "value": null,
+   "unit": "6h-step",
+   "reason": "no code limit; multi-year runs are the design target of the paper"
+  },
+  "validated_lead": {
+   "value": null,
+   "unit": "6h-step",
+   "reason": "WeatherAI: one 8-day case only"
+  },
+  "status": {
+   "implemented": {
+    "state": "yes",
+    "detail": "native SFNO + corrector stepper",
+    "ref": "weatherai/models/ace2",
+    "date": ""
+   },
+   "weights_obtainable": {
+    "state": "yes",
+    "detail": "HF allenai/ACE2-ERA5",
+    "ref": "https://huggingface.co/allenai/ACE2-ERA5",
+    "date": "2026-10-08"
+   },
+   "real_data_inference": {
+    "state": "partial",
+    "detail": "2020-06-01 IC, 32 steps (8 days), CPU + HF GPU",
+    "ref": "tests/models/ace2/data/real_case_report.json",
+    "date": "2026-10-02"
+   },
+   "official_parity": {
+    "state": "yes",
+    "detail": "rollout vs fme, 12 steps, max rel. error 7.9e-5",
+    "ref": "tests/models/ace2/data/fme_rollout_parity_12steps.json",
+    "date": "2026-10-02"
+   },
+   "multi_init_long_rollout": {
+    "state": "no",
+    "detail": "multi-year / multi-init runs not done",
+    "ref": "",
+    "date": ""
+   },
+   "independent_hindcast": {
+    "state": "no",
+    "detail": "",
+    "ref": "",
+    "date": ""
+   }
+  },
+  "paper": "Watt-Meyer et al., npj Clim. Atmos. Sci. 8, 205 (2025)",
+  "paper_claims": "",
+  "resources": "3.1 GB GPU peak, 32 steps 3.5 s (HF ZeroGPU)",
+  "limitations": [
+   "atmosphere-only: SST and sea ice are inputs, so a run is an atmospheric response to the given SST, NOT an SST forecast",
+   "with observed future SST the run is a conditional hindcast, not a forecast"
+  ],
+  "api": "weatherai.inference.ace2.ACE2Forecaster",
+  "runnable": true
+ },
+ "neuralgcm": {
+  "key": "neuralgcm/v1",
+  "model": "neuralgcm",
+  "checkpoint": "deterministic_{2_8,1_4,0_7}_deg, stochastic_1_4_deg, stochastic_{precip,evap}_2_8_deg",
+  "backend": "jax-official",
+  "product": "weather-to-climate",
+  "code_source": "https://github.com/neuralgcm/neuralgcm (official JAX) + dinosaur dycore; weatherai wraps it unchanged",
+  "code_licence": "Apache-2.0",
+  "weights_source": "gs://neuralgcm/models/v1/*.pkl (public); precip checkpoints Zenodo 10.5281/zenodo.17109230",
+  "weights_licence": "v1: CC-BY-SA-4.0; precip/evap: CC-BY-4.0",
+  "weights_redistributable": "yes",
+  "files": [
+   "<name>.pkl (58 MB for 2.8 deg ... ~1 GB for 0.7 deg)"
+  ],
+  "parameters": null,
+  "inputs": [
+   {
+    "name": "<model.input_variables>",
+    "units": "ERA5 units",
+    "long_name": "geopotential, temperature, u, v, specific humidity, cloud water/ice on 37 pressure levels",
+    "levels": [],
+    "level_units": "",
+    "source_name": "",
+    "notes": ""
+   }
+  ],
+  "history": "1 instantaneous state",
+  "grid": "Gaussian grid of the checkpoint (2.8 deg: 128x64)",
+  "vertical": "37 pressure levels in, sigma levels inside",
+  "normalisation": "inside the official model",
+  "outputs": [
+   {
+    "name": "<model.output variables>",
+    "units": "ERA5 units",
+    "long_name": "same as inputs + diagnostics",
+    "levels": [],
+    "level_units": "",
+    "source_name": "",
+    "notes": ""
+   }
+  ],
+  "time_step": "internal 1 h (2.8 deg) ... ; output every requested timedelta",
+  "time_semantics": "instantaneous",
+  "forcings": [
+   {
+    "name": "sea_surface_temperature",
+    "units": "K",
+    "when": "every step",
+    "notes": "WeatherAI policy must be chosen: persist_initial or provided"
+   },
+   {
+    "name": "sea_ice_cover",
+    "units": "1",
+    "when": "every step",
+    "notes": "same"
+   }
+  ],
+  "spatial_mask": "global",
+  "ensemble": "stochastic checkpoints: seed -> member; deterministic checkpoints: one member",
+  "technical_max_lead": {
+   "value": null,
+   "unit": "6h-step",
+   "reason": "no code limit; forcings beyond the given series are held per policy"
+  },
+  "validated_lead": {
+   "value": null,
+   "unit": "6h-step",
+   "reason": "WeatherAI: demo snapshot + one 24-h precipitation case"
+  },
+  "status": {
+   "implemented": {
+    "state": "yes",
+    "detail": "official JAX path wrapped (forecast backend); the native PyTorch port is PARTIAL (learned components + spherical harmonics, no dycore) and is NOT offered as a forecaster",
+    "ref": "weatherai/models/neuralgcm",
+    "date": ""
+   },
+   "weights_obtainable": {
+    "state": "yes",
+    "detail": "public GCS bucket",
+    "ref": "https://storage.googleapis.com/neuralgcm/models/v1/",
+    "date": "2026-10-08"
+   },
+   "real_data_inference": {
+    "state": "partial",
+    "detail": "precip checkpoints 24 h from 2020-01-01 vs ERA5 (2026-10-02); NeuralGCMForecaster (official JAX, deterministic_2_8_deg, CPU) on the official demo ERA5 snapshot 1959-01-02, 4 x 6 h, 185 s incl. compile, peak RSS 2.6 GB (2026-10-08). Lead 0 (decoded initial state) is not the analysis: 157 K at 10 hPa vs input minimum 183 K",
+    "ref": "tests/inference/test_ace2_neuralgcm_unicm.py",
+    "date": "2026-10-08"
+   },
+   "official_parity": {
+    "state": "yes",
+    "detail": "forecast path IS the official code (wrapper only converts I/O)",
+    "ref": "weatherai/models/neuralgcm/neuralgcm.py",
+    "date": ""
+   },
+   "multi_init_long_rollout": {
+    "state": "no",
+    "detail": "",
+    "ref": "",
+    "date": ""
+   },
+   "independent_hindcast": {
+    "state": "no",
+    "detail": "",
+    "ref": "",
+    "date": ""
+   }
+  },
+  "paper": "Kochkov et al., Nature 632, 1060 (2024)",
+  "paper_claims": "",
+  "resources": "",
+  "limitations": [
+   "atmosphere-only: SST/sea ice prescribed (persisted or given) -> not an SST forecast",
+   "partial PyTorch port must not be used for forecasts"
+  ],
+  "api": "weatherai.inference.neuralgcm.NeuralGCMForecaster",
+  "runnable": true
+ },
+ "unicm": {
+  "key": "unicm/none",
+  "model": "unicm",
+  "checkpoint": "none published",
+  "backend": "none",
+  "product": "climate-modes",
+  "code_source": "https://github.com/tsinghua-fib-lab/UniCM-Global-Climate-Modes (MIT; HEAD 67fe4c1, 2026-02-06); native port in weatherai/models/unicm",
+  "code_licence": "MIT",
+  "weights_source": "none: README expects a locally trained runs/SaveModel (20 seeds trained on CMIP6 CESM2-FV2 + reanalyses)",
+  "weights_licence": "n/a",
+  "weights_redistributable": "no",
+  "files": [],
+  "parameters": 12726037,
+  "inputs": [
+   {
+    "name": "5 channels",
+    "units": "normalised",
+    "long_name": "upper-ocean / atmosphere anomaly fields on a 12x72 grid (see official LoadData.py)",
+    "levels": [],
+    "level_units": "",
+    "source_name": "",
+    "notes": ""
+   }
+  ],
+  "history": "12 months",
+  "grid": "5 deg 12x72 (official ORAS5 regions)",
+  "vertical": "n/a",
+  "normalisation": "official LoadData.py (not ported)",
+  "outputs": [
+   {
+    "name": "fields + climate-mode indices",
+    "units": "normalised",
+    "long_name": "",
+    "levels": [],
+    "level_units": "",
+    "source_name": "",
+    "notes": ""
+   }
+  ],
+  "time_step": "1 month",
+  "time_semantics": "monthly means",
+  "forcings": [],
+  "spatial_mask": "official region masks",
+  "ensemble": "20 seed models bagged (official)",
+  "technical_max_lead": {
+   "value": 24,
+   "unit": "month",
+   "reason": "pred 24 in the official config"
+  },
+  "validated_lead": {
+   "value": null,
+   "unit": "month",
+   "reason": "no trained weights"
+  },
+  "status": {
+   "implemented": {
+    "state": "yes",
+    "detail": "architecture bit-exact vs official code with RANDOM weights",
+    "ref": "docs/results/unicm_parity.json",
+    "date": ""
+   },
+   "weights_obtainable": {
+    "state": "no",
+    "detail": "official GitHub HEAD 67fe4c1 contains no checkpoint and no link (re-checked 2026-10-08); Zenodo 10.5281/zenodo.19173780 is code-only and HF had no checkpoint (checked 2026-10-01; Zenodo/HF unreachable from this environment on 2026-10-08)",
+    "ref": "https://github.com/tsinghua-fib-lab/UniCM-Global-Climate-Modes",
+    "date": "2026-10-08"
+   },
+   "real_data_inference": {
+    "state": "no",
+    "detail": "impossible without weights; random-weight outputs are never forecasts",
+    "ref": "",
+    "date": ""
+   },
+   "official_parity": {
+    "state": "partial",
+    "detail": "random weights only (structure parity)",
+    "ref": "docs/results/unicm_parity.json",
+    "date": ""
+   },
+   "multi_init_long_rollout": {
+    "state": "no",
+    "detail": "",
+    "ref": "",
+    "date": ""
+   },
+   "independent_hindcast": {
+    "state": "no",
+    "detail": "",
+    "ref": "",
+    "date": ""
+   }
+  },
+  "paper": "Yuan et al., Nat. Mach. Intell. 8, 930-941 (2026)",
+  "paper_claims": "",
+  "resources": "",
+  "limitations": [
+   "weights not obtainable -> blocked",
+   "retraining = separate project: CMIP6 + ORAS5/ERA5/GODAS/SODA data, ~20 seeds, explicit train/validation/test years"
+  ],
+  "api": "weatherai.inference.unicm.UniCMForecaster (refuses without a user-trained checkpoint)",
+  "runnable": false
+ }
+}

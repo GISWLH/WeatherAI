@@ -292,6 +292,21 @@ forecast-skill claim. GPU runs: Hugging Face Space
 * **HF ZeroGPU 2026-10-02:** **PASS** — lite vs official reference max abs 7e-7; full size 24-step rollout 0.36 s; batch-4 teacher-forced step + backward 0.21 s; peak 3.8 GB; grads finite.
 * **Not verified / not done:** pretrained forecast or skill (no checkpoint), training on real data, the lambda3 skill loss (`climate_mode_sc`).
 
+## Inference API and re-checks (2026-10-08) — `weatherai.inference`
+
+* New stable API + checkpoint cards + run manifests for ORCA-DL, FuXi-S2S, ACE2, NeuralGCM, UniCM: [inference.md](inference.md),
+  [model_cards.json](model_cards.json).
+* **FuXi-S2S units corrected:** the official ERA5 sample's `total_precipitation` is the daily mean of *hourly* accumulations
+  (global mean 1.152e-4 m vs WB2 mean hourly accumulation 1.150e-4 m; a daily total would be 2.76e-3 m), so the model's
+  tp channel (clip(1000·tp)) is **mm/h**, not mm/day; ×24 gives mm/day. ttr/3600 = mean top net thermal flux (−244.80 vs
+  −244.82 W/m²). Instantaneous inputs are 00–23 UTC means, accumulations 01–24 UTC (`results/fuxi_s2s_input_check.json`).
+* **NeuralGCM** forecaster = official JAX model only (torch port partial, refused); CPU run on the demo snapshot, 4×6 h,
+  185 s, peak RSS 2.6 GB; lead 0 (decoded initial state) reaches 157 K at 10 hPa where the input minimum is 183 K —
+  never use lead 0 as an analysis.
+* **UniCM** re-checked: official GitHub HEAD 67fe4c1 (2026-02-06) still has no checkpoint or link; blocked.
+* Not run here (Hugging Face / Zenodo unreachable, no GPU): ORCA-DL / FuXi-S2S / ACE2 with official weights through the new
+  API; reproduction scripts in `examples/inference/`.
+
 ## Blocked (not started; nothing faked)
 
 | Model | Blocking point (checked 2026-10-01) |

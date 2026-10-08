@@ -1,0 +1,159 @@
+{
+ "what": "Official FuXi-S2S sample inputs (github tpys/FuXi-S2S data/sample, ERA5 2020-06-01/02, 121x240) vs daily means built from WeatherBench2 hourly ERA5 1.5 deg (conservative regridding; gs://weatherbench2/datasets/era5/1959-2023_01_10-1h-240x121_equiangular_with_poles_conservative.zarr)",
+ "scripts": "scripts/fuxi_s2s_input_check.py <sample_dir> <out.json>; scripts/fuxi_s2s_tp_units_check.py <sample_dir> <out.json>",
+ "conclusion": {
+  "instantaneous_fields": "daily mean of hourly values 00..23 UTC (rmse/std 0.018-0.12; residual = sample regridding differs from WB2 conservative)",
+  "accumulated_fields": "mean of hourly accumulations ending 01..24 UTC",
+  "tp": "sample tp [m] = mean hourly accumulation -> official clip(tp*1000) is mm/h (daily-mean rate); x24 = mm/day",
+  "ttr": "sample ttr [J/m2 hourly accumulation] / 3600 = mean top net thermal flux [W/m2] (global mean -244.80 vs WB2 -244.82)",
+  "sst_mask": "sample sst NaN count 9848 (mask.nc land) vs WB2 8104: use the official mask.nc, not the WB2 NaN pattern"
+ },
+ "global_means": {
+  "2020-06-01": {
+   "tp_sample_globalmean_m": 0.00011518388760937266,
+   "tp_wb2_mean_hourly_accum_m": 0.00011504338366436963,
+   "tp_wb2_daily_total_m": 0.002761041207944871,
+   "tp_sample_as_mm_per_day": 2.764413302624944,
+   "ttr_sample_over_3600_globalmean_Wm2": -244.79979921101454,
+   "olr_wb2_globalmean_Wm2": -244.81511587669826
+  },
+  "2020-06-02": {
+   "tp_sample_globalmean_m": 0.00011987734001757163,
+   "tp_wb2_mean_hourly_accum_m": 0.00011842936714292292,
+   "tp_wb2_daily_total_m": 0.00284230481143015,
+   "tp_sample_as_mm_per_day": 2.877056160421719,
+   "ttr_sample_over_3600_globalmean_Wm2": -244.23784366537234,
+   "olr_wb2_globalmean_Wm2": -244.26586748855397
+  }
+ },
+ "best_match_per_channel": {
+  "2020-06-01|2m_temperature": {
+   "choice": "00-23 x1",
+   "rmse_over_std": 0.03095724447269159,
+   "ref_max": 312.9674987792969,
+   "wb2_max": 312.0817565917969,
+   "nan_ref": 0,
+   "nan_wb2": 0
+  },
+  "2020-06-01|sea_surface_temperature": {
+   "choice": "00-23 x1",
+   "rmse_over_std": 0.018054464321408854,
+   "ref_max": 305.9073181152344,
+   "wb2_max": 306.1316833496094,
+   "nan_ref": 9848,
+   "nan_wb2": 8104
+  },
+  "2020-06-01|mean_sea_level_pressure": {
+   "choice": "00-23 x1",
+   "rmse_over_std": 0.024643129095441436,
+   "ref_max": 103893.65625,
+   "wb2_max": 103888.7734375,
+   "nan_ref": 0,
+   "nan_wb2": 0
+  },
+  "2020-06-01|total_column_water_vapour": {
+   "choice": "00-23 x1",
+   "rmse_over_std": 0.0395108816627181,
+   "ref_max": 70.55809783935547,
+   "wb2_max": 70.3907470703125,
+   "nan_ref": 0,
+   "nan_wb2": 0
+  },
+  "2020-06-01|10m_u_component_of_wind": {
+   "choice": "00-23 x1",
+   "rmse_over_std": 0.12302064209723393,
+   "ref_max": 17.6123046875,
+   "wb2_max": 17.44096565246582,
+   "nan_ref": 0,
+   "nan_wb2": 0
+  },
+  "2020-06-01|total_precipitation": {
+   "choice": "01-24 x1",
+   "rmse_over_std": 0.315965173599869,
+   "ref_max": 0.006001035217195749,
+   "wb2_max": 0.004647449590265751,
+   "nan_ref": 0,
+   "nan_wb2": 0
+  },
+  "2020-06-01|top_net_thermal_radiation": {
+   "choice": "01-24 x3600",
+   "rmse_over_std": 0.04524141047661637,
+   "ref_max": -374348.75,
+   "wb2_max": -402066.650390625,
+   "nan_ref": 0,
+   "nan_wb2": 0
+  },
+  "2020-06-01|2m_dewpoint_temperature": {
+   "choice": "00-23 x1",
+   "rmse_over_std": 0.028415583590048137,
+   "ref_max": 301.2830505371094,
+   "wb2_max": 300.7127990722656,
+   "nan_ref": 0,
+   "nan_wb2": 0
+  },
+  "2020-06-02|2m_temperature": {
+   "choice": "00-23 x1",
+   "rmse_over_std": 0.03139825382005443,
+   "ref_max": 313.2908935546875,
+   "wb2_max": 312.5082092285156,
+   "nan_ref": 0,
+   "nan_wb2": 0
+  },
+  "2020-06-02|sea_surface_temperature": {
+   "choice": "00-23 x1",
+   "rmse_over_std": 0.01809825982684424,
+   "ref_max": 305.689208984375,
+   "wb2_max": 306.0982360839844,
+   "nan_ref": 9848,
+   "nan_wb2": 8104
+  },
+  "2020-06-02|mean_sea_level_pressure": {
+   "choice": "00-23 x1",
+   "rmse_over_std": 0.02383579230143697,
+   "ref_max": 103843.5703125,
+   "wb2_max": 103837.5078125,
+   "nan_ref": 0,
+   "nan_wb2": 0
+  },
+  "2020-06-02|total_column_water_vapour": {
+   "choice": "00-23 x1",
+   "rmse_over_std": 0.039704516702660966,
+   "ref_max": 72.06591033935547,
+   "wb2_max": 71.86141204833984,
+   "nan_ref": 0,
+   "nan_wb2": 0
+  },
+  "2020-06-02|10m_u_component_of_wind": {
+   "choice": "00-23 x1",
+   "rmse_over_std": 0.11092323230293612,
+   "ref_max": 16.454545974731445,
+   "wb2_max": 16.09205436706543,
+   "nan_ref": 0,
+   "nan_wb2": 0
+  },
+  "2020-06-02|total_precipitation": {
+   "choice": "01-24 x1",
+   "rmse_over_std": 0.35458690219938255,
+   "ref_max": 0.011397600173950195,
+   "wb2_max": 0.007537765894085169,
+   "nan_ref": 0,
+   "nan_wb2": 0
+  },
+  "2020-06-02|top_net_thermal_radiation": {
+   "choice": "01-24 x3600",
+   "rmse_over_std": 0.044575579151496396,
+   "ref_max": -327832.71875,
+   "wb2_max": -344461.5966796875,
+   "nan_ref": 0,
+   "nan_wb2": 0
+  },
+  "2020-06-02|2m_dewpoint_temperature": {
+   "choice": "00-23 x1",
+   "rmse_over_std": 0.02872118788687321,
+   "ref_max": 300.9359436035156,
+   "wb2_max": 300.6631164550781,
+   "nan_ref": 0,
+   "nan_wb2": 0
+  }
+ }
+}

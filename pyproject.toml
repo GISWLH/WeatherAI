@@ -29,6 +29,11 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=7.0", "pytest-cov"]
+# Inference API backends (weatherai.inference). Keep torch / onnxruntime / jax in separate environments if they conflict:
+# weatherai.inference imports none of them at import time.
+onnx = ["onnx>=1.15", "onnxruntime>=1.17"]          # FuXi-S2S official ONNX path (onnxruntime-gpu on CUDA boxes)
+io = ["xarray>=2023.1", "netCDF4", "h5netcdf"]      # reading official inputs, saving ForecastResult netCDF
+hub = ["huggingface_hub"]                           # ORCA-DL / ACE2 weight download
 data = ["cdsapi>=0.6.1"]
 # Official Microsoft Aurora (PyTorch, MIT) — needed by weatherai.models.aurora
 aurora = ["microsoft-aurora", "einops", "scipy"]

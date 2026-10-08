@@ -35,7 +35,8 @@ def download_sample(root: str):
 def make_input(root: str):
     """Returns (array (2, 76, 121, 240) float32 in raw units, the two date strings); channels = ``CHANNELS``.
 
-    tp: clip(m*1000, 0, 1000) (mm/day); ttr: /3600 (W m-2); sst: NaN over land (official mask.nc)."""
+    tp: clip(m*1000, 0, 1000) -> mm/h (the official ERA5 files hold the daily mean of HOURLY accumulations; x24 = mm/day,
+    verified in docs/results/fuxi_s2s_input_check.json); ttr: /3600 (W m-2); sst: NaN over land (official mask.nc)."""
     import xarray as xr
     chans, init = [], None
     for long, short in _NAMES:

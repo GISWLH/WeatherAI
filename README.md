@@ -33,6 +33,31 @@ Architecture notes:
 - GraphCast: [docs/graphcast_specs.md](docs/graphcast_specs.md)
 - GraphCast parity vs DeepMind JAX + NVIDIA PhysicsNeMo (stage-wise): [docs/graphcast_parity.md](docs/graphcast_parity.md)
 
+## Forecast API for ocean / S2S / seasonal models (`weatherai.inference`)
+
+Stable, reproducible entry points (used by [WeatherPre](https://github.com/GISWLH/WeatherPre); details in
+[docs/inference.md](docs/inference.md), machine-readable cards in [docs/model_cards.json](docs/model_cards.json)):
+
+```python
+from weatherai import inference as wi
+wi.card("orca-dl")                                        # inputs/units/grid/levels/normalisation/forcings/masks/licences + evidence
+f = wi.load("fuxi-s2s", path="/ckpt/fuxi_s2s")            # official ONNX (default), seeded noise; backend="torch" = native port
+idx = f.run(inputs, lead_days=42, members=11, seed=0, out_dir="run/")   # > 42 days raises HorizonError; one file + manifest per member
+f = wi.load("orca-dl", root="/ckpt/orca_dl", seeds=(1, 2, 3))           # members = training seeds of ONE model
+res = f.run(inputs, lead_months=7, out_path="orca.nc")                  # NaN outside the 63.5S-63.5N ocean mask, tos = 5 m proxy
+```
+
+| model | backend | evidence (implemented / weights / real data / parity / multi-init / hindcast) | technical max | validated |
+|---|---|---|---|---|
+| ORCA-DL | torch-native | yes / yes (not redistributable) / partial / yes / no / no | none (official 24 mo) | — |
+| FuXi-S2S | official ONNX (+ native) | yes / yes (CC-BY-NC-ND) / partial / yes / external / no | 42 days | — |
+| ACE2-ERA5 | torch-native | yes / yes / partial / yes / no / no | none (forcing-bound) | — |
+| NeuralGCM | official JAX | yes / yes / partial / yes / no / no | none (forcing policy explicit) | — |
+| UniCM | — | structure only / **no weights** / no / random-weight parity / no / no | — | — |
+
+`import weatherai` and `import weatherai.inference` no longer import torch or any model; `weatherai.models` resolves its
+exports lazily (existing imports unchanged), so the JAX NeuralGCM path runs in a torch-free environment.
+
 ## Aurora — native PyTorch implementation
 
 `weatherai.models.aurora` re-implements Aurora (*Nature* 2025; MIT,

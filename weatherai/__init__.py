@@ -3,18 +3,10 @@
 Independent project by Longhao Wang (GISWLH). Model implementations are
 adapted from WeatherLearn (MIT) and paper-inspired skeletons (FengWu,
 GraphCast).
-"""
 
-from .models import (
-    FengWu,
-    FengWu_lite,
-    FuXi,
-    Fuxi,
-    GraphCast,
-    GraphCast_lite,
-    Pangu,
-    Pangu_lite,
-)
+The top-level names are resolved lazily (PEP 562): ``import weatherai`` / ``import weatherai.inference`` import no torch,
+build no model and download nothing; ``from weatherai import Pangu`` works as before.
+"""
 
 __version__ = "0.1.0"
 __all__ = [
@@ -27,3 +19,10 @@ __all__ = [
     "GraphCast",
     "GraphCast_lite",
 ]
+
+
+def __getattr__(name):
+    if name in __all__:
+        from . import models
+        return getattr(models, name)
+    raise AttributeError(f"module 'weatherai' has no attribute {name!r}")
