@@ -1,0 +1,33 @@
+name: Sync to Hugging Face Hub
+
+# Publishes the model card (README.md) and docs/models/*.md to the Hub model repo LonghaoWang/WeatherAI.
+# Needs a repository secret HF_TOKEN (a Hugging Face token with write access); skipped when it is not set.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "README.md"
+      - "docs/models/**"
+      - "docs/assets/**"
+      - "scripts/sync_hf.py"
+      - ".github/workflows/sync_hf.yml"
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install huggingface_hub
+      - name: Push model card and model pages
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          if [ -z "$HF_TOKEN" ]; then
+            echo "::warning::HF_TOKEN secret is not set; skipping the Hugging Face sync"
+            exit 0
+          fi
+          python scripts/sync_hf.py --repo LonghaoWang/WeatherAI

@@ -1,680 +1,141 @@
-# WeatherAI
+<div align="center">
 
-**Personal weather AI model zoo (PyTorch)** — Pangu, FuXi, FengWu, GraphCast, and more.
+<img src="docs/assets/banner.png" alt="WeatherAI: 20 peer-reviewed weather and climate AI models in one readable PyTorch library" width="100%">
 
-个人天气 AI 模型库（PyTorch）：Pangu、FuXi、FengWu、GraphCast 等，将逐步改进与扩展。
+**English** · [简体中文](README_zh.md) · [日本語](README_ja.md)
 
-## Models / 模型
+[![License: MIT](https://img.shields.io/badge/License-MIT-0EA5E9.svg)](LICENSE)
+[![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-1D4ED8.svg)](pyproject.toml)
+[![PyTorch](https://img.shields.io/badge/PyTorch-native-EE4C2C.svg?logo=pytorch&logoColor=white)](https://pytorch.org)
+[![JAX](https://img.shields.io/badge/JAX-supported-A855F7.svg)](docs/models/neuralgcm.md)
+[![Models](https://img.shields.io/badge/models-20-14B8A6.svg)](#model-zoo)
+[![HF Space](https://img.shields.io/badge/%F0%9F%A4%97%20Space-GPU%20tests-FFD21E.svg)](https://huggingface.co/spaces/LonghaoWang/weatherai-graphcast-smoke)
+[![HF Hub](https://img.shields.io/badge/%F0%9F%A4%97%20Hub-model%20card-FFD21E.svg)](https://huggingface.co/LonghaoWang/WeatherAI)
+[![Stars](https://img.shields.io/github/stars/GISWLH/WeatherAI?style=social)](https://github.com/GISWLH/WeatherAI/stargazers)
+
+</div>
+
+**WeatherAI** re-implements the AI weather and climate models published in *Nature*, *Science* and their sister
+journals as plain, readable PyTorch `nn.Module`s, and checks every port against the authors' own code.
+Load the official weights, compare with the original, fine-tune, or start from a Lite config that runs on a laptop.
+
+## ✨ Highlights
+
+- 🧩 **20 models, one library** — Pangu, GraphCast, Aurora, GenCast, NeuralGCM, FuXi-S2S, CAS-Canglong and more, all
+  with the same `import` style and plain tensors in / tensors out. No per-model environments to juggle.
+- 🔀 **Multi-framework** — native PyTorch throughout; official **JAX** code is kept where it matters (NeuralGCM training and
+  precipitation) and as the reference for GraphCast, GenCast and WeatherNext; **ONNX**-only releases (FuXi-ENS, FuXi-S2S)
+  are rebuilt as PyTorch modules. Runs on CPU and **CUDA** GPUs.
+- ✅ **Verified, not just rewritten** — official checkpoints strict-load for 13 models, and outputs match the official
+  implementation (often bit-for-bit). Every claim has a script and a JSON result; GPU runs are tested on an NVIDIA
+  Blackwell GPU through a Hugging Face ZeroGPU Space.
+- 🪶 **Full size and Lite** — the paper-size network for real experiments, plus Lite configs (same code, small grid) for 15
+  models that train on a laptop CPU or a single small GPU.
+
+## 🚀 Quick start
+
+```bash
+pip install git+https://github.com/GISWLH/WeatherAI.git      # or: git clone ... && pip install -e ".[dev]"
+```
+
+```python
+import torch
+from weatherai.models import Canglong_lite, GraphCast_lite, Aurora_small
+
+sst  = Canglong_lite()(torch.randn(1, 8, 8, 32, 64))    # 3-month SST outlook -> (1, 1, 3, 32, 64)
+step = GraphCast_lite()(torch.randn(1, 4, 32, 64))      # one 6-hour step on a tiny icosahedral mesh
+aurora = Aurora_small(pretrained=True)                  # official weights (~450 MB), strict-loaded into native PyTorch
+```
+
+<a id="model-zoo"></a>
+## 🗺️ Model zoo
+
+🔓 official weights load · 🎯 matches the official code · ⚡ tested on a CUDA GPU · 🪶 Lite config · 🆕 new.
+Each **docs** link opens a one-page summary: usage, what was verified, and what was not.
+
+### 🌍 Global medium-range forecasting
 
 | Model | Import | Notes |
 |-------|--------|-------|
-| **Pangu** / `Pangu_lite` | `from weatherai.models import Pangu, Pangu_lite` | 3D Earth-attention style; lite for smaller grids.<br>**论文 / Paper:** *Nature* 2023, [doi:10.1038/s41586-023-06185-3](https://doi.org/10.1038/s41586-023-06185-3) |
-| **FuXi** (`Fuxi`) | `from weatherai.models import FuXi` | Cube embedding + U-Transformer (Swin V2).<br>**论文 / Paper:** *npj Climate and Atmospheric Science* 2023, [doi:10.1038/s41612-023-00512-1](https://doi.org/10.1038/s41612-023-00512-1) |
-| **FengWu** / `FengWu_lite` | `from weatherai.models import FengWu, FengWu_lite` | Multi-modal encode–fuse–decode; optional uncertainty. `FengWu` follows the 2023 preprint architecture ([specs](docs/fengwu_specs.md)).<br>**论文 / Paper:** *Communications Earth & Environment* 2025, [doi:10.1038/s43247-025-02502-y](https://doi.org/10.1038/s43247-025-02502-y) |
-| **GraphCast** / `GraphCast_lite` | `from weatherai.models import GraphCast, GraphCast_lite` | Grid ↔ icosahedral mesh encode–process–decode.<br>**论文 / Paper:** *Science* 2023, [doi:10.1126/science.adi2336](https://doi.org/10.1126/science.adi2336) |
-| **NeuralGCM** (partial native + JAX training) | `from weatherai.models.neuralgcm import NeuralGCMLearnedComponents, convert_official_params, SphericalHarmonicsGrid` · `from weatherai.models import NeuralGCM_lite, NeuralGCMWrapper` · `from weatherai.models.neuralgcm import train` (configure / from-scratch / fine-tune, JAX, tested on HF GPU) | Native learned components + spherical-harmonic layer (14.5 M official weights strict-load, match JAX); dycore and feature builders not ported, forecasts run via the official-JAX wrapper (oracle); trainable/fine-tunable in JAX, tested on HF GPU — [section](#neuralgcm--native-learned-components--torch-spherical-harmonics-jax-wrapper-kept-as-oracle).<br>**论文 / Paper:** *Nature* 2024, [doi:10.1038/s41586-024-07744-y](https://doi.org/10.1038/s41586-024-07744-y) |
-| **FuXi-ENS** (native, from ONNX) | `from weatherai.models.fuxi_ens import FuXiENS, FuXiENS_lite, FuXiENSNoise, load_official` | PyTorch port reverse-engineered from the official ONNX; 2.47 B official weights (CC-BY-NC-4.0, not in git) strict-load; one forward step matches onnxruntime (max\|Δ\|/max\|ref\| 8e-6, CPU); 15-day ensemble not run — [section](#fuxi-ens--native-pytorch-reverse-engineered-from-the-official-onnx-numerically-checked-vs-onnxruntime).<br>**论文 / Paper:** *Science Advances* 2025 (not Nature family), [doi:10.1126/sciadv.adu2854](https://doi.org/10.1126/sciadv.adu2854) |
-| **StormCast** (native, official weights load) | `from weatherai.models.stormcast import StormCast, StormCast_lite, load_official` | Regression U-Net + EDM diffusion U-Net (HRRR 512×640); official weights (Apache-2.0, not in git) strict-load, bit-identical to PhysicsNeMo on CPU; HF GPU run on synthetic inputs only, skill not verified — [section](#stormcast--native-pytorch-regression-u-net--edm-diffusion-u-net-official-weights-load-bit-identical-to-physicsnemo-on-cpu).<br>**论文 / Paper:** *Science Advances* 2026, [doi:10.1126/sciadv.adv0423](https://doi.org/10.1126/sciadv.adv0423) |
-| **ArchesWeather / ArchesWeatherGen** (native, official weights load) | `from weatherai.models.arches import ArchesWeather_lite, ArchesWeatherGen_lite, convert` | 3D-attention forecaster + flow-matching generator (383.8 M); official checkpoint strict-loads, matches `geoarches` on CPU (rel. err ≈1e-6); one real case only, no skill statistics — [section](#archesweathergen--native-pytorch-3d-attention-forecaster--flow-matching-generator-official-weights-load-parity-with-geoarches).<br>**论文 / Paper:** *Science Advances* 2026, [doi:10.1126/sciadv.adx2372](https://doi.org/10.1126/sciadv.adx2372) |
-| **ACE2-ERA5** (native, official weights load) | `from weatherai.models.ace2 import ACE2, load_official, SFNO, RealSHT` | 455.8 M-param spherical Fourier neural operator + inference wrapper (dry-air/moisture conservation, SST forcing); official checkpoint (Apache-2.0, not in git) strict-loads, 12-step rollout matches `fme` (max rel. err 7.9e-5); one 8-day real case, no climate-scale/ensemble statistics — [section](#ace2-era5--native-pytorch-spherical-fourier-neural-operator-official-weights-load-matches-fme-rollouts).<br>**论文 / Paper:** *npj Climate and Atmospheric Science* 2025, [doi:10.1038/s41612-025-01090-0](https://doi.org/10.1038/s41612-025-01090-0) |
-| **NeuralGCM precipitation** (official JAX checkpoints; trainable loss) | `from weatherai.models.neuralgcm import precip as P` | Two official stochastic precipitation checkpoints (Zenodo, CC-BY-4.0, not in git) run through unchanged official JAX code, plus differentiable precipitation loss and `fit_precip` fine-tune loop; one real 24 h case, reproduced on HF GPU; not ported to native torch, no skill/multi-case verification — [section](#neuralgcm-precipitation--official-checkpoints-via-official-code-trainable-loss).<br>**论文 / Paper:** *Science Advances* 2026, [doi:10.1126/sciadv.adv6891](https://doi.org/10.1126/sciadv.adv6891) |
-| **ORCA-DL** (native, official weights load) | `from weatherai.models.orca_dl import ORCADL, load_official` | 539.9 M-param Swin-based ocean model (6 ocean encoders + wind-stress encoder, lead-time MLP experts, monthly step); official `seed_1` checkpoint (weights licence unstated, not in git) strict-loads, 7-month rollout matches the official PyTorch code (rel. L2 ≤7.3e-7); one 11-month real case (GODAS 1980), no multi-seed/decadal statistics — [section](#orca-dl--native-pytorch-swin-ocean-model-official-weights-load-matches-official-code).<br>**论文 / Paper:** *Science Advances* 2025, [doi:10.1126/sciadv.adu2488](https://doi.org/10.1126/sciadv.adu2488) |
-| **TropiCycloneNet (TCN_M)** (native, official weights load) | `from weatherai.models.tropicyclonenet import TCNM, load_official` | Multimodal TC track + intensity model (4.77 M params); strict load, bit-exact vs official code; NI test split only — [section](#tropicyclonenet-tcn_m--native-pytorch-official-weights-load-bit-exact-vs-official-code).<br>**论文 / Paper:** *Nature Communications* 2025, [doi:10.1038/s41467-025-61087-4](https://doi.org/10.1038/s41467-025-61087-4) |
-| **GenFocal** (lite flow core; official checkpoints not loaded) | `from weatherai.models.genfocal import GenFocalNet, reflow_loss, sample_flow` | Debiasing ReFlow loss + RK4 sampler ported (parity vs official JAX ~1e-7) with a lite trainable 3-D U-ViT; 8.7 + 39 GB Orbax checkpoints not loadable — [section](#genfocal--lite-native-pytorch-flow-core-parity-vs-official-jax-full-checkpoints-blocked).<br>**论文 / Paper:** *Nature Machine Intelligence* 2026, [doi:10.1038/s42256-026-01308-7](https://doi.org/10.1038/s42256-026-01308-7) |
-| **FuXi-S2S** (native, ONNX weights load; weights not redistributed) | `from weatherai.models.fuxi_s2s.convert import load_official` | Subseasonal ensemble Swin-V2 model (1.04 B params); strict load, onnxruntime parity ~1e-3 per channel (fp16 vs fp32); CC-BY-NC-ND weights fetched by the user — [section](#fuxi-s2s--native-pytorch-from-the-onnx-onnxruntime-parity-weights-cc-by-nc-nd-never-committed).<br>**论文 / Paper:** *Nature Communications* 2024, [doi:10.1038/s41467-024-50714-1](https://doi.org/10.1038/s41467-024-50714-1) |
-| **UniCM** (native, no public checkpoint) | `from weatherai.models.unicm import UniCM, UniCMConfig` | Coupled climate-mode transformer (12.7 M params, SST + modes); bit-exact vs official code with random weights; no pretrained weights exist — [section](#unicm--native-pytorch-bit-exact-vs-official-code-random-weights-no-public-checkpoint).<br>**论文 / Paper:** *Nature Machine Intelligence* 2026, [doi:10.1038/s42256-026-01245-5](https://doi.org/10.1038/s42256-026-01245-5) |
-| **GenCast** (native denoiser + sampler) | `from weatherai.models.gencast import GenCastDenoiser_from_official, GenCast_lite` | Native denoiser (grid2mesh GNN, k-hop mesh transformer, mesh2grid GNN) + EDM/DPM-Solver++ sampler; official Mini weights strict-load, network matches official JAX (network only) — [section](#gencast--native-pytorch-denoiser-official-architecture-official-mini-weights-load--edmdpm-solver-sampler).<br>**论文 / Paper:** *Nature* 2025, [doi:10.1038/s41586-024-08252-9](https://doi.org/10.1038/s41586-024-08252-9) |
-| **Aardvark** (encoder + processor + station decoder) | `from weatherai.models.aardvark import AardvarkEncoder, AardvarkProcessor, AardvarkDecoder, AardvarkE2E` | Native port of everything the official public code defines; three official checkpoints strict-load, E2E output matches official code on the official sample — [section](#aardvark-weather--native-pytorch-encoder--processor--decoder).<br>**论文 / Paper:** *Nature* 2025, [doi:10.1038/s41586-025-08897-0](https://doi.org/10.1038/s41586-025-08897-0) |
-| **WeatherNext Cyclones Mini** (native network + JAX oracle) | `from weatherai.models.weathernext_cyclones import WeatherNextCyclonesNet_from_official, WeatherNextCyclonesNative_lite` | Native FGN network (noise-conditioned encoders, 16-layer k-hop mesh transformer); official Mini weights strict-load, match official JAX; tracker/rollout/normalisation not ported — [section](#weathernext-cyclones-mini--native-pytorch-network-official-mini-weights-load-jax-wrapper-kept-as-oracle).<br>**论文 / Paper:** *Nature* 2026, [doi:10.1038/s41586-026-10953-2](https://doi.org/10.1038/s41586-026-10953-2) |
-| **Aurora** (native PyTorch) | `from weatherai.models import Aurora, Aurora_lite, Aurora_small` | Perceiver encoder → Swin-3D U-Net → Perceiver decoder; official small ckpt strict-loads, matches official package exactly on tested inputs — [section](#aurora--native-pytorch-implementation).<br>**论文 / Paper:** *Nature* 2025, [doi:10.1038/s41586-025-09005-y](https://doi.org/10.1038/s41586-025-09005-y) |
-
-Architecture notes:
-- FengWu: [docs/fengwu_specs.md](docs/fengwu_specs.md)
-- GraphCast: [docs/graphcast_specs.md](docs/graphcast_specs.md)
-- GraphCast parity vs DeepMind JAX + NVIDIA PhysicsNeMo (stage-wise): [docs/graphcast_parity.md](docs/graphcast_parity.md)
-
-## Aurora — native PyTorch implementation
-
-`weatherai.models.aurora` re-implements Aurora (*Nature* 2025; MIT,
-[microsoft/aurora](https://github.com/microsoft/aurora)) as explicit `nn.Module`s with readable `forward()`s,
-in the style of the Pangu/FuXi code (no dependency on the `aurora` pip package):
-
-| file | contents |
-|---|---|
-| `patch_embed.py` | `LevelPatchEmbed` – per-variable 3-D patch conv over (history × P × P) |
-| `perceiver.py` | `PerceiverAttention`, `PerceiverResampler` (post-norm cross-attention + MLP) |
-| `encoder.py` | `Perceiver3DEncoder` – patch-embed surface(+static) and every level → level aggregation → + position / patch-scale / lead-time / absolute-time Fourier embeddings |
-| `swin3d.py` | `Swin3DBackbone`: `SwinStage`s of `Swin3DBlock` (shifted 3-D windows with periodic-longitude mask, AdaLN on lead time), `PatchMerging3D`, `PatchSplitting3D` (linear1 → reshape/permute → crop padding → norm → linear2) |
-| `decoder.py` | `Perceiver3DDecoder` – level de-aggregation + per-variable linear unpatchify |
-| `aurora.py` | `Aurora` (plain-tensor I/O, official normalisation statistics, `Aurora_lite`, `Aurora_small`) |
-| `official.py` | the old thin wrapper over `microsoft-aurora` – **reference oracle only** (tests / parity) |
-
-```python
-import torch
-from weatherai.models import Aurora, Aurora_lite, Aurora_small
-
-m = Aurora_lite().eval()                      # ~3 M params, random init, CPU friendly
-surf   = torch.randn(1, 2, 4, 16, 32) + torch.tensor([278., 0, 0, 1e5]).view(1, 1, 4, 1, 1)  # (B,T=2,[2t,10u,10v,msl],H,W)
-static = torch.randn(3, 16, 32)               # [lsm, z, slt]
-atmos  = torch.randn(1, 2, 5, 4, 16, 32)      # (B,T,[z,u,v,t,q],L=4,H,W)
-with torch.no_grad():
-    surf_next, atmos_next = m(surf, static, atmos)   # physical units, +6 h
-
-# fully configurable / trainable: any depths, heads, window, patch size, embed dim
-my = Aurora(embed_dim=128, encoder_depths=(2, 4, 2), decoder_depths=(2, 4, 2),
-            encoder_num_heads=(4, 8, 16), decoder_num_heads=(16, 8, 4), num_heads=4, window_size=(2, 6, 12))
-loss = (my(surf, static, atmos)[0] - surf[:, 1]).pow(2).mean(); loss.backward()   # see tests for a full training step
-
-# Official small pretrained checkpoint (~450 MB from HF microsoft/aurora), strict=True load into the native model
-small = Aurora_small(pretrained=True).eval()  # or Aurora_small(checkpoint_path="aurora-0.25-small-pretrained.ckpt")
-```
-
-**Verified (numerically, vs. the official `microsoft-aurora` package at b628d7c, same weights, same inputs; fp32,
-`atol=1e-5, rtol=1e-4` – observed max abs difference was exactly 0.0 on CPU):** random-weight state-dict transfer
-`strict=True` for 3 configs (window (2,2,2)/(2,3,5)/(2,6,12), uneven depths, v3 lead-time embedding), grids
-16×32 … 32×64 incl. the odd-latitude crop (H%4==1) and patch grids that need merge-padding / split-cropping
-(25×44); the official `aurora-0.25-small-pretrained.ckpt` strict-loads into the native `Aurora_small` and
-reproduces the official output on 33×64 inputs. HF ZeroGPU results: see [docs/model_status.md](docs/model_status.md).
-Unit tests: `tests/models/aurora` (shapes, odd grids, merge/split + window helpers, param-name layout,
-25-step training demo, grads, parity).
-**Not verified / not included:** skill on real ERA5/HRES data (random inputs only), multi-step rollout;
-upstream features that are *not* ported: LoRA, stochastic/ensemble mode, level-conditioned embeddings,
-dynamic/atmos-static variables, separate/modulation heads (so the fine-tuned 1.3 B, HRES-0.1°, air-pollution,
-wave and v1.5 checkpoints are **not** loadable; `aurora-0.25-pretrained` and `-small-pretrained` are); the 1.3 B
-checkpoint was not run; built-in normalisation stats only for the 13 standard ERA5 levels.
-
-## NeuralGCM — native learned components + torch spherical harmonics (JAX wrapper kept as oracle)
-
-NeuralGCM (*Nature* 2024) = a differentiable spectral dynamical core (`dinosaur`: moist primitive equations on
-sigma levels, IMEX-RK stepping) + learned Haiku components. **This is only partly ported:**
-
-| ported natively (`weatherai/models/neuralgcm/network.py`, `spectral.py`) | not ported (exact stuck points: docs/model_status.md) |
-|---|---|
-| `EpdTower` / `ColumnMLP` (gelu-MLP encode → 5 residual process blocks → decode; the decoder, 2 encoders and the physics tendency tower) | the dinosaur dycore: sigma-coordinate primitive equations, `imex_rk_sil3` stepper, filters, `DycoreWithPhysicsCorrector` |
-| `SurfaceEmbedding` (land/sea/sea-ice towers + mask/ice blend), `VerticalConvTower` (5 × Conv1D over levels) | tower *input feature builders* (dimensional velocity/prognostic/pressure/radiation/latitude/memory features, normalisation, input clipping/filters) and output transforms |
-| `LearnedPositionalFeatures`, `LearnedOrography` | the base orography dataset (shipped in the checkpoint's aux data), forcing interpolation, `encode/advance/decode/unroll` plumbing |
-| `SphericalHarmonicsGrid`: real SH basis, `to_modal/to_nodal`, ∇², ∂λ, cosφ∂φ, div/curl/grad, u,v ↔ vorticity/divergence | stochastic checkpoints (noise/`stochastic.py`), other resolutions |
-
-```python
-import pickle, torch
-from weatherai.models.neuralgcm import NeuralGCMLearnedComponents, convert_official_params, SphericalHarmonicsGrid, SpectralGridConfig
-
-params = pickle.load(open("deterministic_2_8_deg.pkl", "rb"))["params"]   # official checkpoint (trusted file; needs jax to unpickle)
-net = convert_official_params(params)                 # strict: raises if any of the 121 Haiku modules / 14,518,180 weights is unused
-y = net.physics(torch.randn(2365, 128, 64))           # (192, 128, 64) physics-tendency tower on packed nodal features (C, lon, lat)
-g = SphericalHarmonicsGrid(SpectralGridConfig.TL63()) # 2.8° Gaussian grid, modal shape (127, 65)
-vor, div = g.uv_nodal_to_vor_div_modal(u, v)          # (..., lon, lat) -> (..., m, l)
-```
-
-Everything is differentiable and trainable (`tests/.../test_neuralgcm_native.py::TestTrainableNative`: tower training step; gradients
-through the SH layer). The official JAX wrapper (`NeuralGCM_lite()`, `NeuralGCMWrapper.forecast`) is unchanged and is the only
-path that produces forecasts.
-
-**Status — verified (numerically vs the official `neuralgcm` 1.2.3 / `dinosaur` 1.5.0, float32, official 2.8° deterministic checkpoint):**
-all 121 Haiku modules / 14,518,180 weights strict-load; real packed tower inputs from one official encode→advance→decode step of the
-demo ERA5 snapshot (24 random columns), max |native − official|: decoder 1.5e-4 (|y|≤206), encoder 1.3e-3 (|y|≤699), encoder_1 1.1e-4,
-physics 1.3e-5 (|y|≤20), surface towers ≤5.8e-6, surface blend ≤1e-5, vertical CNN 2.2e-7 (|y|≤0.11), learned orography 0.0;
-SH layer on random fields: ≤3.1e-5 for transforms, vorticity/divergence and the u,v round trip (|values| up to ~100), exact (0.0) for ∇²,
-∂λ; float64 basis orthonormal to 1e-10. **Not verified / not claimed:** any forecast produced by native code (there is none),
-whole-model parity, the dycore, feature builders, other checkpoints (1.4°/0.7°/stochastic). (JAX-on-GPU and the JAX training workflow: see the next subsection.) Details and results:
-[docs/model_status.md](docs/model_status.md).
-
-### NeuralGCM — training / modification workflow (JAX, official `neuralgcm` + `dinosaur` + Haiku; `weatherai/models/neuralgcm/train.py`)
-
-JAX is allowed for NeuralGCM, so the model that can actually be **trained and modified** is the *official* one: the dycore is
-official code, the learned parts are re-configured through the official gin config and trained with `optax`.
-(The torch towers / SH layer above are kept for inspection and porting; they cannot forecast.)
-
-**What you can modify** (all verified to change the Haiku parameter tree and train; `CONFIG_KEYS` lists them):
-
-| knob | where | effect |
-|---|---|---|
-| `LATENT_SIZE`, `LAYER_SIZE` | `build_model(ck, {...})` | width of the decoder / 2 encoder / physics EPD towers (default 384 / 384) |
-| `NUM_BLOCKS`, `process/MlpUniform.num_hidden_layers` | same | depth: residual process blocks (5) and layers per block (3) |
-| `N_CNN_FEATURES`, `POSITIONAL_LATENT_SIZE` | same | vertical 1-D CNN width (32), learned positional-feature channels (8) |
-| `SURFACE_MODEL_LATENT_SIZE/LAYER_SIZE/OUTPUT_SIZE` | same | land / sea / sea-ice surface towers (8) |
-| `N_INNER_DYCORE_STEPS` | same | dycore substeps per physics call (5) |
-| any other gin binding | `extra_bindings=["name = value"]` | e.g. other tower options in the shipped config |
-| which parameters are trained | `fit(..., freeze=[regex,…])` | e.g. freeze everything except `physics` / the decoder |
-| initialisation | `params="official" \| "init" \| "transfer"` | keep the checkpoint; random Haiku init (from scratch); random init + copy every official array whose path *and* shape still match |
-| loss | `rollout_loss(..., steps, variables, lat_weights, level_w)` | `steps=0` encode→decode reconstruction, `steps≥1` differentiable `unroll` through the dycore |
-
-**Not modified / not claimed:** the dynamical core equations, the feature builders and the data pipeline are the official code (not
-re-implemented). No paper-scale training (multi-year ERA5, 1–4 day rollouts, spectral losses, multi-stage schedule, TPUs) was run, and
-nothing here claims forecast skill from the demos below.
-
-```python
-import pickle, numpy as np
-from weatherai.models.neuralgcm import train as T
-from weatherai.models.neuralgcm.neuralgcm import download_checkpoint
-ck = pickle.load(open(download_checkpoint("deterministic_2_8_deg"), "rb"))        # trusted official file
-
-# (a) from scratch, smaller towers (874,020 params instead of 14,518,180)
-m, rep = T.build_model(ck, {"LATENT_SIZE": 64, "LAYER_SIZE": 64, "NUM_BLOCKS": 2}, params="init", seed=0)
-x, forc = T.demo_snapshot(m)                                  # bundled ERA5 snapshot
-tg = {k: v[None] for k, v in x.items() if k != "sim_time"}   # reconstruction target
-m, hist = T.fit(m, x, forc, tg, steps=0, n_iters=8, lr=3e-3)  # hist["loss"], hist["grad_norm"]
-
-# (b) fine-tune the official checkpoint on real ERA5 (public ARCO-ERA5 on GCS, regridded; needs gcsfs)
-off, _ = T.build_model(ck, params="official")
-ds = T.fetch_era5_window(off, "2020-01-01T00", steps=1, hours=1)              # cached .nc
-x, forc = T.demo_snapshot(off)  # or build inputs from ds[0]; see tests / scripts for the exact call
-off2, hist = T.fit(off, x, forc, T.stack_targets(off, ds, 1), steps=1, n_iters=6, lr=3e-5, freeze=[r"^(?!.*physics)"])
-```
-
-**Training recipe used for the demos:** `optax.chain(clip_by_global_norm(1.0), adam(lr))`; loss = mean squared error of the decoded
-state vs the target, each variable normalised by one std (per-level scales blow up at the model top), cos(lat) weights, levels above
-50 hPa masked (the encoder→decoder reconstruction error dominates there); `steps=0` for reconstruction, `steps=1` (1 h) through the
-dycore for fine-tuning; learning rate 3e-3 from scratch, 3e-5 for fine-tuning.
-
-**Verified** (`tests/models/neuralgcm/test_neuralgcm_train.py`, 7 tests, JAX 0.10.2 CPU on the box, 176 s):
-config overrides change the architecture (874,020 vs 14,518,180 params; `process_tower_1` exists, `_2` does not); `transfer` copies all
-14,518,180 official weights when only unrelated knobs change; from-scratch reconstruction training decreases the loss
-(1.288 → 0.929 in 8 Adam steps); gradients through a dycore rollout reach the encoder, physics tower and decoder (finite, 129/129
-parameter leaves non-zero); training with the physics tower frozen leaves it bit-identical; fine-tuning the *official* model on
-real ERA5 (2020-01-01 00Z → +1 h) lowers the loss 0.002582 → 0.002217 after 6 steps (held-out 2020-07-01 12Z: 0.004205 → 0.004002; `scripts/neuralgcm_finetune_era5.py`, 331 s for 6 steps on 8 CPU
-cores, peak RSS ~7 GB). **These are mechanics checks, not skill:** at +1 h the official model's error vs ERA5 is dominated by the
-encoder→decoder reconstruction error near the model top and is *larger* than persistence at many levels; fine-tuning for 6 steps on one
-snapshot is overfitting to that snapshot, and no improvement in forecast skill is claimed.
-
-**HF GPU (ZeroGPU RTX PRO 6000 Blackwell MIG 2g.48gb):** `neuralgcm_train` smoke **PASS with JAX actually on the GPU**
-(`jax_backend: gpu`, `CudaDevice`, params live on the device; 4 reconstruction steps 0.0030 → 0.0027, rollout gradient finite, 129/129 leaves non-zero).
-What it took: the Space runs Python 3.10, so JAX is capped at 0.6.2, which has only the `jax[cuda12]` extra (not `cuda13`) — with plain `jax[cpu]`
-(the earlier setting) or an unmatched extra JAX silently falls back to CPU; and on the Blackwell slice XLA's GEMM autotuner aborts the process on the
-dycore's `HIGHEST`-precision matmuls (`Algorithm not supported by the ElementalIrEmitter: ALG_DOT_BF16_BF16_F32`), fixed with
-`XLA_FLAGS=--xla_gpu_autotune_level=0` (set in `hf_space/app.py` before `import jax`). ZeroGPU exposes the GPU only inside `@spaces.GPU`
-calls (120 s limit), so only the small config was timed there; the full-size fine-tune was run on CPU only.
-
-## FuXi-ENS — native PyTorch (reverse-engineered from the official ONNX; numerically checked vs onnxruntime)
-
-FuXi-ENS (*Science Advances* 2025) is a latent-noise ensemble forecaster. The only official artefact is `fuxi_ens.onnx`
-(Zenodo [10.5281/zenodo.15124541](https://zenodo.org/records/15124541), **CC-BY-NC-4.0 — non-commercial; weights are never committed**:
-download with `python scripts/fetch_fuxi_ens.py --out /workspace/ckpt/fuxi_ens`, 9.9 GB). `weatherai/models/fuxi_ens/model.py` is an
-explicit PyTorch re-implementation whose structure, constants and parameter names were read out of the 26,018-node graph; **the official
-code has no PyTorch definition, so the ONNX graph itself is the oracle**.
-
-```
-input [B,2,78,721,1440] (2 steps x (5 vars x 13 levels + 13 surface))  --(x-mean)/std, NaN->0, accumulated channels 73-77 := 0-->  xn
- dist_p  : PatchEmbed (Conv 8x8 on [state;static const] -> LN) -> dropout "drop0" -> layers.0 (7 AdaLN blocks) -> dropout "drop1"
-           -> layers.1 (7 blocks) -> final AdaLN (+patch-embed residual) -> ConvTranspose 8x8 heads: mean, logvar     (14 blocks)
- sample  = mean + exp(logvar/2) * eps                                  <- the ensemble noise ("RandomNormalLike")
- decoder.0: z = xn + sample (channels 73-77 := 0) -> PatchEmbed -> 6 layers x 7 AdaLN blocks -> final AdaLN (+residual)
-           -> pl_head (65 ch) || sf_head (13 ch)  -> x*std+mean ; tp = exp(clip(.,0,7)) - 1                          (42 blocks)
-output [B,2,78,721,1440] = concat(input[:, -1], new state)           (== the ONNX output; inference.py feeds it back as next input)
-```
-
-AdaLN block = `adaln = Linear(SiLU(cond))` -> `(shift, scale, gate)` x 2; `x += g1*Attn(LN(x)(1+s1)+b1)`, `x += g2*MLP(LN(x)(1+s2)+b2)`;
-`cond = MLP(sin/cos(step)) + MLP(hour/24) + MLP(doy/365)`. Attention: 24 heads x 64, 18x18 windows over the 90x180 token grid,
-odd blocks cyclic-shifted by 9 with the stored −100 mask, **1-D RoPE on the window-flattened index** (not 2-D), q and k scaled by d^-1/4;
-MLP is a gated GELU (`a*gelu(b)`, `fc1` 1536→8192 no bias); LayerNorm is the *unbiased-variance* form (eps 1e-6). All of this was recovered
-from the graph and then verified numerically (below). 2,474,861,958 parameters + buffers `mean/std [78,1,1]` and `const [6,721,1440]`
-(parameter count equals the ONNX weight elements exactly; the 22 `attn_mask` initialisers are derived by `make_shift_mask` and
-tested equal to the ONNX tensors).
-
-```python
-from weatherai.models.fuxi_ens import load_official, FuXiENSNoise, FuXiENS_lite, FuXiENSConfig
-model = load_official("/workspace/ckpt/fuxi_ens/fuxi_ens.onnx")          # strict state-dict load, weights memory-mapped (low RAM)
-g = torch.Generator().manual_seed(0)
-noise = FuXiENSNoise.sample(model.cfg, 1, g)                             # 2 dropout masks + latent normal noise, all explicit
-y = model(x, step, hour, doy, noise)                                     # x: [1,2,78,721,1440] physical units; step=t, hour=h/24, doy=min(365,doy)/365
-y2 = model(x, step, hour, doy, generator=torch.Generator().manual_seed(1))  # another ensemble member
-lite = FuXiENS_lite()                                                    # ~2.1 M params, same code, trainable (see tests)
-```
-
-**Random ops in the exported graph (handled):** the ONNX has no eval switch — `RandomUniformLike` (×2: dropout p=0.2 on the patch embedding
-`drop0` and on the output of `dist_p.layers.0` `drop1`, keep-prob 0.8, scale 1/0.8) and `RandomNormalLike` (latent noise) are always active, so
-two ONNX runs differ. For a deterministic comparison `scripts/fuxi_ens_fixed_noise_onnx.py` rewrites the 108 MB graph so these three tensors
-are graph *inputs* (no op is changed), and both runtimes receive identical tensors (torch generator seed 1234). `FuXiENSNoise` is the
-corresponding explicit input of the PyTorch model; `FuXiENS.forward` without `noise` draws all three from a `torch.Generator`.
-
-**Verified (CPU, fp32; `scripts/fuxi_ens_ort_segments.py` + `scripts/fuxi_ens_verify.py`; official `input.nc` 2018-09-13 18Z/2018-09-14 00Z,
-step=0, fixed noise):** one full forward (all 14 + 42 blocks), strict load of all 498 initialisers. Stage-by-stage vs onnxruntime 1.30 (max |Δ| / max |ref|):
-normalised input 0 (exact), patch embed 5e-7, dist_p layer 0 1.8e-6, dist_p out 1.4e-5, mean/logvar 4.7e-7 / 1.2e-6, sample 1.2e-7, decoder input `z` 6e-8,
-decoder layers 0–3 ≤ 1.5e-6, layer 4–5 1.7e-4–2.3e-4 (a few outlier tokens, rel-RMSE 1e-5), decoder out 8e-5. **Final output** (physical units, all 78 channels × 2 steps):
-max |Δ| = 1.66 on |values| up to 2.06e5 (geopotential; max |Δ|/max|ref| = 8.1e-6); per-channel max |Δ| / channel-std ≤ 3.3e-3 (precipitation `tp`, whose
-`exp(clip)-1` amplifies logit errors) and ≤ 1.8e-3 for every other channel; relative RMSE ≤ 1.1e-5 for every channel; NaN (SST land) positions identical; the pass-through
-step is bit-identical. That is fp32-rounding level for a 2.5 B-parameter network, **not** bit-exactness.
-
-**HF GPU (ZeroGPU Space, NVIDIA RTX PRO 6000 Blackwell MIG 2g.48gb, torch 2.13+cu130; `scripts/gpu_smoke.py fuxi_ens`): PASS.** The 9.9 GB weights were fetched *on the Space*
-from Zenodo with `scripts/fetch_fuxi_ens.py` (parallel HTTP range requests + local inflate: ≈ 430–480 s versus ≈ 3 MB/s ≈ 55 min for a single stream; `/tmp` has ≈ 3 TB free) and strict-loaded into CPU RAM
-(0.8 s, memory-mapped); then, inside the 120 s ZeroGPU window, moved to the GPU in **fp32 (no reduced precision was needed)**: 3 s, 11.5 GB resident, 16.0 GB peak, one forward 2.5 s.
-Same official `input.nc` and the same fixed noise (torch CPU generator, seed 1234) as the CPU run; compared on the committed stride-12 slice of the onnxruntime output (all 78 channels × both steps):
-max |Δ| = 0.078 (max |Δ|/channel-std = 5.9e-4, tolerance 1e-2·std); step-0 pass-through equal; a second member with different noise differs. TF32 disabled. The Space also passes the 10 synthetic unit tests (2 file-dependent tests skipped there). Only this single forward step was run on the GPU (no 15-day rollout, no bf16/fp16).
-Caveat: the Space weights are preloaded in a background thread (`fetch_fuxi_ens` endpoint) because a redeploy wipes `/tmp` and downloading does not fit into one 120 s GPU call.
-
-## StormCast — native PyTorch regression U-Net + EDM diffusion U-Net (official weights load; bit-identical to PhysicsNeMo on CPU)
-
-`weatherai/models/stormcast` re-implements NVIDIA's StormCast v1 (ERA5 → HRRR, 3 km, 512×640 grid, 99 state + 26 conditioning + 2 invariant channels)
-without any PhysicsNeMo dependency. Weights: HF [`nvidia/stormcast-v1-era5-hrrr`](https://huggingface.co/nvidia/stormcast-v1-era5-hrrr) (Apache-2.0, ungated; not committed here).
-
-```python
-from weatherai.models.stormcast import StormCast_lite, load_official
-from weatherai.models.stormcast.convert import download
-
-m = StormCast_lite()                                      # tiny trainable config (64x64, 8 state channels), same code path
-y = m(x_state, x_cond)                                    # one 1-hour step: regression mean + 18/4-step Heun diffusion residual
-
-download("/workspace/ckpt/stormcast")                     # ~800 MB from the Hub (HF_TOKEN only needed if you are rate limited)
-model = load_official("/workspace/ckpt/stormcast")        # strict load of both networks + means/stds/invariants
-nxt = model(x_hrrr, x_cond_on_hrrr_grid)                  # (B,99,512,640) physical units, (B,26,512,640) coarse conditioning interpolated to HRRR
-mean_only = model(x_hrrr, x_cond_on_hrrr_grid, deterministic_only=True)   # regression mean without the diffusion residual
-```
-
-* **What is verified (CPU, fp32, real official checkpoint, 512×640):** the native `StormCastUNet` and `EDMPrecond` match the PhysicsNeMo 2.2.2 modules loaded from the *same* `.mdlus` state dicts with **max|Δ| = 0.0** (regression net, and the EDM denoiser at σ = 0.002 / 0.5 / 5 / 800; random-normal inputs). Strict loading works (only the two empty `device_buffer` tensors are dropped); parameter counts 78,588,387 and 121,058,275.
-  Small random-weight parity (64×64) and the 6-step Heun sampler against `physicsnemo.diffusion.samplers.sample` + `EDMNoiseScheduler` also pass (`tests/parity/stormcast`).
-  Quirk reproduced on purpose: PhysicsNeMo's eval-mode GroupNorm uses the **unbiased** variance.
-* **HF ZeroGPU (RTX PRO 6000 Blackwell MIG 2g.48gb, torch 2.13+cu130, 2026-10-02): PASS** — official weights downloaded on the Space, strict-loaded in 2.7 s; regression 512×640 forward 0.3–0.5 s; relative error vs the stored CPU reference slices 1.7e-6 (regression) / 7.7e-6 (EDM σ = 5) with TF32 off (8e-4 / 6.5e-3 with default TF32); a full step (regression + 18 Heun steps = 35 denoiser evaluations) took 10.3 s; peak GPU memory 5.2 GB; different seeds give different samples.
-* **NOT verified:** forecast skill on real data — no real HRRR/GFS/ERA5 case was run (inputs were random tensors at physical mean/std), no multi-hour rollout, no comparison with the Earth2Studio pipeline end-to-end, no reproduction of paper scores, no bf16/fp16, no training of the official-size networks (only the lite config was trained for gradient flow). The HRRR/ERA5 data pipeline (hybrid-level fields, interpolation of the global conditioning to the HRRR grid) is not included.
-
-## ArchesWeatherGen — native PyTorch 3D-attention forecaster + flow-matching generator (official weights load; parity with geoarches)
-
-`weatherai/models/arches` re-implements INRIA's ArchesWeather (deterministic, 24 h step, 1.5° = 121×240 grid, 6 surface + 6 levels×13 pressure-level variables) and ArchesWeatherGen
-(4 deterministic members embedded + a conditional flow-matching network that samples the residual). No `geoarches` dependency at runtime. Weights: HF [`gcouairon/ArchesWeather`](https://huggingface.co/gcouairon/ArchesWeather) (BSD; not committed) and normalisation stats from the geoarches repo (BSD-3, fetched from GitHub raw, not committed).
-
-```python
-from weatherai.models.arches import ArchesWeatherGen_lite, convert
-
-m = ArchesWeatherGen_lite()                                   # tiny trainable config, same code path
-convert.download("/workspace/ckpt/arches")                    # ~2.2 GB; loading the Lightning ckpt needs `pip install omegaconf`
-model, stats = convert.load_official_gen("/workspace/ckpt/arches")   # strict-load of gen net + 4 embedded det members
-```
-See `scripts/arches_real_data.py` (WeatherBench2 ERA5 1.5° sample -> det ensemble mean and generative members).
-
-* **Verified (CPU fp32, oracle = `geoarches` in `/workspace/venv/ga`, `scripts/arches_parity_full.py`, `tests/parity/arches`):** official checkpoints, full size, random normalised inputs: deterministic member max|Δ| 1.6e-5 (rel 1.8e-6); 4-member average rel 8.5e-7; generative-net call rel 8.3e-7; a full 5-step seeded sample max|Δ| 1.5e-5 (rel 9.9e-7). Lite-config exact embedder/backbone parity and the flow-matching scheduler vs diffusers `FlowMatchEulerDiscreteScheduler` pass (unit tests: 7 passed, 1 full-size test gated by `ARCHES_FULL=1`).
-* **Quirks reproduced on purpose:** (1) the released generative net was trained with an int32-overflow bug in its month/hour time features (they come out as month∈{1,12}, hour∈{0,23}); `legacy_overflow_time_features` reproduces it (deterministic members use true month/hour); (2) the SwiGLU block uses a GELU gate; (3) the two "skip" members add the input state.
-* **Real-data check (CPU, WeatherBench2 ERA5 1.5°, init 2020-06-01 12Z, lat-weighted RMSE):** z500 +24 h: persistence 561, det ensemble mean 39.0, generative member 54.2, 3-member mean 46.2 m²/s²; t850: 2.84 / 0.589 / 0.829 / 0.672 K; +48 h generative member z500 110 vs persistence 749. This is a **single case**; no ensemble-skill/CRPS statistics, no comparison to the paper's scores.
-* **HF ZeroGPU (RTX PRO 6000 Blackwell MIG 2g.48gb, torch 2.13+cu130, 2026-10-02): PASS** — strict load 4.8 s; det member forward 0.29 s; relative error vs CPU 2.5e-6 (det) / 2.0e-6 (5-step sample) with TF32 off; real case reproduces the CPU RMSEs (z500 det 39.0, gen member 54.4); 25-step generative member 4.4 s; peak GPU memory 3.0 GB.
-* **NOT verified:** probabilistic skill (CRPS/spread-skill) over many cases, long rollouts, parity with random inputs only (no real-input element-wise comparison vs geoarches), the 4 separate public deterministic seeds beyond seed 0 on GPU, bf16, and training (only gradient flow of the lite configs).
-
-## ACE2-ERA5 — native PyTorch spherical Fourier neural operator (official weights load; matches `fme` rollouts)
-
-`weatherai/models/ace2` re-implements Ai2's ACE2-ERA5 (180×360 Gauss–Legendre grid, 44 inputs → 50 outputs, 6 h step) without depending on `fme` or `torch-harmonics`:
-`sht.py` (real SHT/iSHT on Gauss–Legendre and equiangular grids), `sfno.py` (SFNO: 8 blocks, embed 384, instance norm, per-degree complex channel mixing = Driscoll–Healy convolution, inner linear skip + outer identity skip, big skip), `model.py` (the stepper around the network) and `convert.py`.
-Weights: HF [`allenai/ACE2-ERA5`](https://huggingface.co/allenai/ACE2-ERA5) (Apache-2.0, not committed).
-
-```python
-from weatherai.models.ace2 import download, load_official
-from weatherai.models.ace2.data import load_case
-
-download("/workspace/ckpt/ace2")                       # 1.8 GB checkpoint + 2020 initial conditions + forcing (0.55 GB)
-m = load_official("/workspace/ckpt/ace2")              # strict-load; 455,831,040 network parameters
-ic, forcing, times = load_case("/workspace/ckpt/ace2", ic_index=5, n_steps=32)   # 2020-06-01T00Z, 8 days
-outs = m.rollout(ic, forcing, 32)                      # list of dicts name -> [1, 180, 360], physical units (all 50 outputs)
-```
-
-* **Stepper (taken from `fme`'s `step_with_adjustments` + the checkpoint's config, not guessed):** normalise → SFNO → denormalise → clamp the 16 `force_positive` fields → pin the global-mean dry-air surface pressure to its initial value (float64) → close the global moisture budget by rescaling precipitation and recomputing the advective tendency → overwrite surface temperature where `round(ocean_fraction)==1` with the next-step forcing. `DSWRFtoa` is read at t+1.
-* **Verified (CPU fp32):** SHT/iSHT equal `torch_harmonics` 0.8.0 (max relative difference ≤3e-8 forward, 0 inverse; Gauss–Legendre 180×360, equiangular and small grids); a random-weight lite SFNO matches `fme`'s `SphericalFourierNeuralOperatorNet` to 1e-5; with the official checkpoint a **12-step (3-day) rollout from the shipped 2020-01-01 initial condition matches the official `fme` Stepper**: max relative error over all 50 output fields 2.6e-7 after step 1, 4.6e-6 after step 2, 7.9e-5 after step 12 (float32 round-off growth; surface pressure differs by ≤0.03 Pa). Unit tests: conservation of dry air and global moisture budget by construction, SST prescription, gradients.
-* **Real case (CPU, one 8-day rollout from 2020-06-01T00Z, lat-weighted RMSE vs WeatherBench2 ERA5 interpolated to 1.5°; ACE2 vs persistence):** day 1: h500 7.27 vs 56.9 m, TMP850 0.739 vs 2.86 K, TMP2m 0.687 vs 1.76 K; day 3: h500 17.8 vs 92.3 m, TMP850 1.35 vs 3.96 K, TMP2m 1.09 vs 2.35 K; day 7: h500 53.3 vs 112 m, TMP850 2.62 vs 4.77 K, TMP2m 1.98 vs 3.1 K. Global dry air drifted by 3.2e-05 Pa over 8 days; global-mean precipitation 2.90 mm/day; CPU time 236 s for 32 steps.
-* **HF ZeroGPU (RTX PRO 6000 Blackwell MIG 2g.48gb, torch 2.13+cu130, 2026-10-02): PASS** — strict load 3.6 s; relative error vs the stored CPU slices 1.5e-06 (1 step) / 6.5e-06 (4 steps) with TF32 off; 32-step (8-day) rollout 3.53 s; dry-air drift over 8 days 3.1e-05 Pa; peak GPU memory 3.1 GB; GPU RMSEs reproduce the CPU report (day-1 h500 7.266 m, day-7 h500 53.278 m).
-* **NOT verified:** multi-year / climate-scale stability and the paper's AMIP-style forced-response results (the repository's 100-year inference was not run), skill statistics over more than one case, comparison with the paper's scores, other ACE2 checkpoints (ACE2-SOM, ACE2-EAMv3), training, bf16/fp16. The forecast case uses the interpolation of 1° output to ERA5's 1.5° grid, which smooths slightly. The native SHT is O(L²) memory per transform table (about 24 MB per direction in fp32).
-
-## NeuralGCM precipitation — official checkpoints via official code, trainable loss
-
-`weatherai/models/neuralgcm/precip.py` wraps the two checkpoints of the *Science Advances* 2026 paper: `stochastic_precip_2_8_deg.pkl` (**predicts** precipitation; evaporation is diagnosed from the column water budget) and `stochastic_evap_2_8_deg.pkl` (predicts evaporation; precipitation is **diagnosed** from the budget). Zenodo [17109230](https://zenodo.org/records/17109230), CC-BY-4.0, downloaded to `/workspace/ckpt/ngcm_precip` and never committed. Both are stochastic models at 2.8° (128×64, 32 levels) with 1 h steps.
-
-```python
-from weatherai.models.neuralgcm import precip as P
-import neuralgcm
-paths = P.download("/workspace/ckpt/ngcm_precip")          # two 45 MB pickles
-m = P.build(P.load_checkpoint(paths["precip"]))            # pickle: trusted official file
-ds = neuralgcm.demo.load_data(m.data_coords)
-pred = P.rollout(m, ds, steps=24, hours=1, seed=0)         # unchanged official stochastic rollout
-rate = P.precip_rate_mm_per_hour(pred)                     # mm/h from the cumulative diagnostic
-params, hist = P.fit_precip(m, inp, forcing, target_mm_per_h, n_updates=100, steps=6, lr=3e-4)   # differentiable loss + optax
-```
-
-* **Diagnostics:** `precipitation_cumulative_mean` (m of water since encode) and `evaporation` (kg m⁻² s⁻¹, negative = evaporation); the rate helper differences the cumulative field.
-* **Verified (CPU):** both pickles load and run through the unchanged official code; parameter counts 11,145,090 (precip, 293 tensors) and 11,080,210 (evap, 230 tensors); different seeds give different members; precipitation of the precip model is non-negative and monotone; the precipitation loss is differentiable through the dycore (gradient is non-zero on the parameters upstream of the precipitation diagnostic, 38 % of the leaves; the rest correctly receive zero); a short fine-tune on a constant target reduces the loss (`tests/models/neuralgcm/test_neuralgcm_precip.py`, 6 tests).
-* **Real case (CPU, one case):** ERA5 from ARCO at 2.8°, init 2020-01-01T00Z, 24 hourly steps, 4 members, vs ERA5 `total_precipitation` 24 h accumulation (ERA5 global mean 2.97 mm). *precip model:* member global means 2.50–2.82 mm, member RMSE 3.82–4.04 mm, pattern correlation 0.82–0.83, ensemble-mean RMSE 3.25 mm / correlation 0.868, spread 2.15 mm, no negative rates. *evap model:* global means 2.64–2.80 mm, member RMSE 4.01–4.07 mm, ensemble-mean RMSE 3.33 mm / correlation 0.870; **its diagnosed precipitation is negative in 38 % of cell-hours (minimum −1.24 mm/h)** — the budget-diagnosed field is not constrained to be positive. A constant-global-mean baseline has RMSE 6.29 mm (`docs/results/neuralgcm_precip_eval.json`, `scripts/neuralgcm_precip_eval.py`).
-* **HF ZeroGPU (JAX 0.6.2 CUDA backend, RTX PRO 6000 Blackwell MIG 2g.48gb, 2026-10-02):** `ngcm_precip` rollout **PASS** (6-step global-mean cumulative precipitation 0.5612 mm vs CPU 0.5620 mm; 58 s incl. XLA compile), `ngcm_evap` rollout **PASS** (0.7586 vs 0.7594 mm; 62 s incl. compile), `ngcm_precip_train` **PASS** (3 optax updates through the loss: 0.127 → 0.104 → 0.069, gradients finite; 164 s incl. compile — the training call is longer than the 120 s nominal ZeroGPU allotment but completed). The first, combined rollout+training smoke aborted ("GPU task aborted") and was therefore split in two. JAX peak GPU memory was not measured.
-* **NOT done / not verified:** a **native-PyTorch port of these checkpoints** — the existing converter for the deterministic checkpoint does not strict-load them (no memory encoder; decoder encode tower 784→1040 inputs, physics decode 192→193 outputs, physics encode 2365→2118 inputs, extra parameters), so tower-level torch parity was not attempted; the paper's skill claims, IMERG/GPCP comparison, multi-day / multi-case statistics, extremes and long-horizon behaviour, multi-year training of the precipitation loss (only mechanics were tested), the fit loop on real multi-step targets. The sqrt-MSE precipitation loss is our choice, not the paper's training recipe.
-
-## ORCA-DL — native PyTorch Swin ocean model (official weights load; matches official code)
-
-`weatherai/models/orca_dl` re-implements ORCA-DL (*Science Advances* 2025) without `transformers`/`timm`/`global_land_mask`; parameter names equal the official ones. Weights: HF dataset `JayKuo/ORCA-DL-data` (`seed_1..8.bin`, 2.16 GB each; licence not stated, GitHub repo has no LICENSE file; never committed). Input: GODAS-style monthly fields on 128×360 (−63.5…63.5°), 16 levels, normalised by the shipped monthly anomaly statistics.
-
-```python
-from weatherai.models.orca_dl import download, download_example, load_official, load_example
-download("/workspace/ckpt/orca_dl", seeds=(1,)); download_example("/tmp/orca_example")   # example input is fetched from GitHub, not vendored
-m = load_official("/workspace/ckpt/orca_dl", seed=1)           # strict load, 539,942,562 parameters
-ocean, atmo = load_example("/tmp/orca_example", "/workspace/ckpt/orca_dl", month=0)    # (1,66,128,360), (1,2,128,360)
-y = m(torch.from_numpy(ocean), torch.from_numpy(atmo), predict_time_steps=11)           # (1,11,66,128,360), normalised; channel 32 = tos
-```
-
-* **Structure:** six ocean encoders (so, thetao, tos, uo, vo, zos) and one wind-stress encoder (patch 2×3, three Swin stages, 2-D rotary positions in windows), a fusion block (wind-stress latent gates the ocean latent after a lead-time rotation, then two global-window Swin blocks), six decoders. Every Swin MLP except the wind-stress encoder is a mixture of six lead-month experts. Lead months 1–6 are predicted *directly* from the same input; the lead-6 output becomes the next input; wind stress stays at its initial value.
-* **Finding:** the official land-mask attention mask is a no-op (its mask is built with an all-zero convolution kernel, so it is uniform), so the native port uses standard Swin masks; numerics agree. The land mask is used only for the loss.
-* **Verified (CPU):** strict load; 7-month rollout from the official demo input vs the official modules (seed_1): rel. L2 4.4e-07–7.3e-07, max abs 1.1e-04 (normalised units; `docs/results/orca_dl_parity.json`); random-weight small config vs official: rel. L2 7.3e-07 (`orca_dl_parity_lite.json`); 9 unit tests.
-* **Real case (one initial month):** GODAS Jan 1980 (the official demo input), seed_1, tos vs GODAS 5 m temperature, lat-weighted RMSE (°C), ORCA-DL vs persistence vs shipped climatology: +1 mo: 0.43 vs 0.70 vs 0.99; +3 mo: 0.64 vs 1.04 vs 0.77; +6 mo: 0.72 vs 3.55 vs 0.68; +9 mo: 0.84 vs 3.38 vs 0.68; +11 mo: 0.96 vs 1.14 vs 0.90. It beats persistence at every lead and the climatology only at leads 1–2 (the climatology is the shipped training-period mean, not GODAS's own); Niño3.4 anomaly at +1 mo 0.49 vs truth 0.42 °C (`docs/results/orca_dl_real_case.json`).
-* **HF ZeroGPU (RTX PRO 6000 Blackwell MIG, torch 2.13+cu130, 2026-10-02): PASS** — strict load 5.2 s, 7-month rollout 0.82 s, 2.4 GB peak; GPU rel. error vs CPU ≤8e-7 (tos +1/+7, zos +1).
-* **NOT verified / not done:** multi-seed ensemble (only seed_1 downloaded), more than one initial month, decadal rollouts, the paper's Niño/IOD/AMV skill, other reanalysis inputs, training, the licence of the weights.
-
-## TropiCycloneNet (TCN_M) — native PyTorch, official weights load, bit-exact vs official code
-
-`weatherai/models/tropicyclonenet` re-implements the TCN_M generator (*Nature Communications* 2025): `Unet3D` (8 observed 64×64 500 hPa geopotential frames → 12), two `EnvNet`s (tabular environment + geopotential, 2-layer Transformer), two LSTM encoders, six LSTM decoders (generators) and a class chooser; 6-hourly steps, 8 observed → 4 forecast steps (6–24 h) of (Δlon, Δlat, Δpressure, Δwind). Checkpoint: Zenodo 15024028 `checkpoint_with_model_16000.pt` (CC-BY-4.0, 4,767,195 parameters; not committed). Data: public TCND release (Zenodo 15009527, CC-BY-4.0); `scripts/tcn_prepare_ni.py` builds the official loader layout (NI test split).
-
-```python
-from weatherai.models.tropicyclonenet import download, load_official, make_sample, sequences
-m = load_official(download("/workspace/ckpt/tcn"))                      # strict load of g_state
-f = f"{root}/BST_data/NI/test/NI2019BSTFANI.txt"
-s = make_sample(root, f, sequences(f)[5])
-inc, cls = m.sample(s["obs_traj_rel"], s["image_obs"], s["env"], num_samples=6)   # (4, 6, 1, 4) increments; works on CPU (the official code calls .cuda())
-# relative_to_abs + to_physical + track_error_km give km errors: see scripts/tcn_eval_ni.py
-```
-
-* **Verified (CPU):** official-code parity on 24 real NI test windows built by the *official* dataset class: my data loader (no OpenCV; bilinear resize) matches it to 6e-7, the six generators and the chooser logits are bit-identical (max abs 0) at matched RNG, and the 6-member sampling path is identical (`docs/results/tcn_parity.json`, `scripts/tcn_parity.py`); 5 unit tests.
-* **Official-code defects found (not copied):** (1) the sampling loop iterates `range(n_unique)` instead of the drawn class ids, so on a single storm 42 of 48 members stay at the `ones` initialisation (native: 0); (2) `all_g_out=True` ignores `user_noise`. The chooser is almost uniform (mean max probability 0.174 vs 1/6 = 0.167; argmax classes [101, 197, 4, 0, 5, 0] on the NI test set).
-* **NI test split (20 storms 2017–2022, 307 windows, 3 sampling seeds), track error at 6/12/18/24 h in km:** best of 6 members (official metric) 30 / 53 / 79 / 113; mean member 39 / 77 / 118 / 164; constant velocity 43 / 89 / 137 / 191; persistence 84 / 166 / 246 / 326. At 24 h the pressure MAE is 9.4 hPa and the wind MAE 7.7 m/s (best-track member) (`docs/results/tcn_eval_ni.json`). The official script quotes 24 / 47 / 72 / 103 km (all six basins, checkpoint 5100); not directly comparable.
-* **HF ZeroGPU (2026-10-02):** **PASS** — load 0.1 s, forward+6-member sample 1.3 s, peak 0.35 GB, max abs vs CPU 3.7e-6
-* **NOT verified / not done:** the other five basins and the paper's all-basin scores, checkpoints other than `g_state` (`g_best_state`, `g_best_nl_state` load but were not evaluated), the Himawari visualisation, training (the discriminator/GAN loop is not ported), the code licence (GitHub repo has no LICENSE file).
-
-## GenFocal — lite native PyTorch flow core (parity vs official JAX), full checkpoints blocked
-
-`weatherai/models/genfocal` ports the debiasing-stage maths of GenFocal (*Nature Machine Intelligence* 2026): conditional rectified-flow (ReFlow) loss `mean(w·((x₁−x₀)−v(x_t,t,cond))²)` with `x_t = t·x₁ + (1−t)·x₀`, the RK4 sampler (forward and reversed flow) with output de-normalisation, plus a **lite** trainable 3-D U-ViT flow network (`GenFocalNet`: FiLM residual blocks, axial spatial/temporal attention with QK-norm, periodic longitude, channel-mean/std conditioning, zero-init output). The network is a structural stand-in: it is **not** weight-compatible with the official Flax `UNet3d`. The super-resolution stage (EDM denoiser) is not ported. Code: GitHub google-research/swirl-dynamics (Apache-2.0); checkpoints Zenodo 21285802 (CC-BY-4.0), not downloaded.
-
-```python
-from weatherai.models.genfocal import GenFocalNet, GenFocalNetConfig, reflow_loss, sample_flow
-net = GenFocalNet(GenFocalNetConfig.lite(4))                                    # inputs (batch, time, lon, lat, channels)
-loss = reflow_loss(net, x0, x1, {"channel:mean": cm, "channel:std": cs})        # x0 = climate model, x1 = ERA5 (normalised)
-y = sample_flow(net, x0, {"channel:mean": cm, "channel:std": cs}, num_steps=8)  # RK4, official schedule
-```
-
-* **Verified (CPU, fp64 native vs fp32 official; oracle = unchanged `ConditionalReFlowModel.loss_fn` and `inference_utils.sampling_from_batch` on a tiny Flax network, stored reference; `scripts/genfocal_make_ref.py`, `scripts/genfocal_parity.py`, `docs/results/genfocal_parity.json`):** loss rel. error ≤5.8e-7 (uniform / logistic time draw, with and without weighted norm); 4- and 8-step RK4 samples, forward and reversed, rel. L2 ≤7.5e-8 (max abs ≤1.3e-6); 6 unit tests (also periodic-longitude equivariance and a training-loss decrease of the lite net).
-* **Official-code quirks reproduced:** `tspan = arange(0, 1, 1/N)` has N points, so the sampler takes N−1 steps and returns the state at t = 1−1/N, not t = 1 (`to_end=True` integrates to 1); `lognormal_sampler` is `logistic(std·u + mean)`, not log-normal.
-* **HF ZeroGPU (2026-10-02), random weights:** **PASS** — lite net (3.3 M params, 8×64×32×10, 64-128-128 ch) train step + backward 0.23 s, 8-step RK4 sample 0.26 s, peak 1.0 GB; lite output vs CPU max abs 2.5e-3 (not isolated; default cuDNN conv precision suspected).
-* **Blocker for the real model:** Zenodo 21285802 holds `super_resolution_checkpoints.tar.gz` (8.74 GB) and `debiasing_checkpoints.tar.gz` (39.1 GB), Orbax/OCDBT (tensorstore) checkpoints of the Flax `UNet3d` / `UNet` (e.g. `conus_7d_t2m_w10m_q1000_msl/300000`, 491 MB blobs); the debiasing config is a 6-level 128-channel 3-D U-ViT (`resize_to_shape` (256, 128), 8 snapshots, 10 channels, 128 heads). Not done: the 39 GB archive exceeds the box disk (~25 GB free) and the Space's storage; porting the official `UNet3d` / `FilteredResize` / `InterpConvMerge` / axial attention to read those weights; ERA5/LENS2 inputs (Google Cloud buckets). No real-data debiasing or downscaling was run.
-* **NOT verified / not done:** the official network (no weight load, no parity), the super-resolution stage, real-data skill, the evaluation scripts.
-
-## FuXi-S2S — native PyTorch from the ONNX, onnxruntime parity (weights CC-BY-NC-ND, never committed)
-
-`weatherai/models/fuxi_s2s` re-implements FuXi-S2S (*Nature Communications* 2024), reverse-engineered from the released ONNX graph (no PyTorch source is published): input two 76-channel 121×240 frames + step index, 2×2 patch embedding (1536), step-embedding MLP, Swin-V2 U-Transformer (2 stages × 6 blocks, 10×10 windows, cosine attention, continuous relative-position bias, gated-GELU MLP), a variational latent head (`mean`, log-variance, low-rank `cov`) sampled with two noise tensors, a 2-stage 12-block decoder and a pixel-shuffle head; precipitation is log-transformed, and the output is fed back autoregressively (1.039 B parameters). Weights: Zenodo 15718402 `model-1.0.tar` (2.08 GB, **CC-BY-NC-ND-4.0**): downloaded by the user (`download()` / `scripts/fetch_weights.py fuxi_s2s`), **never committed or redistributed**; only scalar fingerprints (`tests/models/fuxi_s2s/data/cpu_summary.json`) are stored.
-
-```python
-from weatherai.models.fuxi_s2s import make_input, download_sample
-from weatherai.models.fuxi_s2s.convert import download, load_official
-m = load_official(download("/workspace/ckpt/fuxi_s2s"))                  # download() returns the .onnx path; strict load, fp32
-download_sample("/workspace/ckpt/fuxi_s2s/data")                         # raw ERA5 sample inputs from the authors' GitHub
-x, dates = make_input("/workspace/ckpt/fuxi_s2s/data")                   # (2, 76, 121, 240)
-y = m(torch.from_numpy(x)[None], torch.zeros(1))                         # step 0: (1, 2, 76, 121, 240) = [last input, forecast]
-```
-
-* **Verified (CPU, fp32 native vs onnxruntime fp16-graph, official sample 2020-06-01/02, identical injected noise; `scripts/fuxi_s2s_compare.py`, `docs/results/fuxi_s2s_parity.json`):** strict load of all 576 initialisers; intermediate taps rel. L2 2e-4 to 1e-3 (embedding 4.8e-4, encoder 9.9e-4, latent `z` 3.3e-5, decoder 6.2e-4); step-0 output rel. L2 6.3e-6 (worst channel 8.2e-4), NaN mask identical; 3-step autoregressive chain rel. L2 6.3e-6 / 1.1e-5 / 1.4e-5 (worst channel ≤1.2e-3). The residual is fp16-vs-fp32 rounding, not an architecture difference; 5 unit tests.
-* **Findings:** the released `dist_p.cov` weight is exactly zero, so ensemble spread comes only from the diagonal noise (`eps2`); the shifted-window mask covers latitude only (longitude periodic), which differs from a standard Swin mask in 6 windows; the data.zip `input.nc` shipped with the repo is already normalised and unusable with this ONNX (it normalises internally), so inputs are rebuilt from the raw `data/sample` ERA5 files.
-* **HF ZeroGPU (2026-10-02):** **PASS** — strict load 1.2 s, one fp32 step 0.67 s, peak 5.4 GB, probe statistics vs CPU within 5.6e-6 (of std)
-* **NOT verified / not done:** forecast skill or S2S metrics, the 42-step / 11-member production runs, training (lite config is trainable, gradients tested), bit-level emulation of the ORT fp16 kernels.
-
-## UniCM — native PyTorch, bit-exact vs official code (random weights, no public checkpoint)
-
-`weatherai/models/unicm` re-implements UniCM (*Nature Machine Intelligence* 2026): two encoder–decoder transformers (spatio-temporal field branch and climate-mode series branch) on a 12×72 ocean grid with 5 channels (SST, taux, tauy, HTC300, T20D), 2×2 patches, d=256, 4 heads, 4+4 layers, 12 monthly steps in → 24 out; 12,726,037 parameters, state-dict keys identical to the official `UniCM`. `climate_modes` computes the mode series from the fields (region means; dipoles; WWV proxy), `unicm_loss` is the teacher-forced SST + mode loss (the skill term is not ported), `load_official(path)` strict-loads an official `model_best.pkl`. Official-code quirks are reproduced (spatial attention ignores its mask; decoder FFN reuses `sublayer[1]`; `time_emb` shared between branches).
-
-* **Verified (CPU, random weights, official `models.py` unchanged; `scripts/unicm_parity.py`):** 24-step eval rollout bit-identical (max abs 0.0, field and modes; full size and lite), teacher-forced pass rel. L2 3e-7, gradients rel. L2 ≤2e-5 per parameter (`docs/results/unicm_parity*.json`); 5 unit tests with a stored lite reference.
-* **Checkpoint:** none public (GitHub and Zenodo 19173780 hold code only; weights come from local training with `app_train.py` on CMIP6/ORAS5, not obtainable here).
-* **HF ZeroGPU (2026-10-02):** **PASS** — 24-step rollout 0.36 s, batch-4 train step 0.21 s, peak 3.8 GB, lite vs official reference max abs 7e-7
-* **NOT verified / not done:** any pretrained forecast or skill, training on real data, the lambda3 skill loss.
-
-## GenCast — native PyTorch denoiser (official architecture, official Mini weights load) + EDM/DPM-Solver++ sampler
-
-GenCast (*Nature* 2025) is a conditional EDM diffusion model whose denoiser is a GraphCast-style
-grid→mesh→grid network with a 16-layer k-hop mesh transformer; official code is JAX (`google-deepmind/weathernext`).
-`weatherai.models.gencast` contains explicit `nn.Module`s of the **official denoiser** (parameter names mirror the Haiku names)
-plus the EDM wrapper / DPM-Solver++ 2S sampler. No wrapper around JAX is involved at runtime.
-
-| file | contents |
-|---|---|
-| `denoiser.py` | `FourierFeaturesMLP` (noise-level encoder), `LinearNormConditioning`, `ConditionedMLP` (Linear→swish→Linear→LN→cond-affine), `Grid2MeshGNN`, `MeshTransformer` (+ `MeshAttention`: dense masked or banded tri-block-diagonal k-hop attention), `Mesh2GridGNN`, `GenCastDenoiser`, `convert_official_params`, `GenCastDenoiser_from_official`, channel stacking helpers |
-| `graphs.py` | grid2mesh radius graph, finest-mesh banded (reverse Cuthill-McKee) permutation, mesh2grid containing-triangle graph, k-hop mask (re-uses `graphcast.mesh`) |
-| `gencast.py` | EDM preconditioning/loss, noise schedule, DPM-Solver++ 2S + churn sampler, `DenoiserNet` (config-driven adapter), `GenCast`, `GenCast_lite` |
-
-```python
-import numpy as np, torch
-from weatherai.models.gencast import (GenCast_lite, GenCastDenoiser_from_official, denoiser_inputs, unstack_variables)
-
-# (a) small config-driven, trainable instance of the SAME native architecture (random init)
-m = GenCast_lite(img_size=(16, 32), out_channels=4, cond_channels=8, latent=32, transformer_layers=2, mesh_level=1)
-cond, target = torch.randn(2, 8, 16, 32), torch.randn(2, 4, 16, 32)
-loss = m.loss(target, cond); loss.backward()                     # EDM-weighted denoising loss (training step)
-members = m.eval().sample(cond, num_members=4)                   # (4, 2, 4, 16, 32) DPM-Solver++ 2S + churn
-
-# (b) official GenCast-1p0deg-Mini weights (public GCS bucket, 230 MB) in the native denoiser
-#     gs://dm_graphcast/gencast/params/GenCast 1p0deg Mini <2019.npz
-lat, lon = np.linspace(-90, 90, 181), np.arange(360)             # official 1° grid
-net = GenCastDenoiser_from_official("mini.npz", lat, lon)        # strict load; mesh_size=4, 16 layers, 57.5 M params
-x = denoiser_inputs(inputs, forcings, noisy_targets, (181, 360)) # dict-of-arrays -> (B, 181*360, 264), official channel order
-raw = net(x, noise_levels)                                       # (B, Ng, 84) raw network output
-```
-
-**Status — verified (CPU, fp32):**
-* **Denoiser vs official JAX with the official Mini weights** (reference from the official `weathernext1_gen.denoiser.Denoiser`,
-  `scripts/gencast_denoiser_reference.py`, random inputs, official plain-`mha` attention because the TPU splash kernel is unavailable):
-  - *trained configuration* (mesh_size=4 / 2562 mesh nodes, `attention_k_hop=16`, 181×360 grid, 102 k grid→mesh edges, batch 1): max |Δ| = 4.8e-5 on all 84 outputs (output magnitude up to 22; max rel. to output max 3.2e-6);
-  - small configuration (mesh_size=2, k_hop=3, 13×24, batch 2, two noise levels): max |Δ| = 7.4e-5; banded tri-block-diagonal attention gives the same (6.9e-5).
-  - graph construction (permuted mesh, grid2mesh/mesh2grid indices and edge features) equals the official graphs (indices exactly, features ≤3e-8).
-  - all all official parameter tensors (57,492,612 weights) strict-load; unit tests use atol 2e-4 / rtol 1e-4 (small) and atol 5e-4 (full).
-* EDM coefficients, noise/churn schedules and the DPM-Solver++ 2S sampler (± churn) match the official JAX sampler (rtol 2e-4, closed-form toy denoiser, fixed noise).
-* Training step example/test: loss decreases on a fixed batch, all parameters receive gradients (`tests/models/gencast`).
-
-**Not verified / not ported:** the *network* only was compared against the official network — **not** the full model (no end-to-end official
-ensemble forecast comparison; the official `InputsAndResiduals` normalisation, NaN-cleaning of SST and the autoregressive rollout are not ported); the sampling noise
-is iid Gaussian on the grid, official is spherical-harmonic white noise (needs `dinosaur`); the 0.25° and Operational checkpoints were not run
-(same code path, larger graphs); the lite config is not a trained model. Details: [docs/model_status.md](docs/model_status.md).
-
-## Aardvark Weather — native PyTorch encoder + processor + decoder
-
-Aardvark Weather (*Nature* 2025; official code CC0) = observation **encoder** → **processor** → station **decoder**.
-`weatherai.models.aardvark` now contains explicit ports of all three (parameter names identical to the official ones):
-
-| file | contents |
-|---|---|
-| `setconv.py` | `SetConv` (Gaussian ConvDeepSet: off-grid→grid, grid→grid, grid→off-grid, density channel) |
-| `aardvark.py` | `ViT` (per-variable patch embed + variable aggregation, or MLP + single embed), `AardvarkProcessor` (24 h step) |
-| `unet.py` | cylindrical-padding conv / transposed conv, `Down`, `Up`, `Unet` |
-| `system.py` | `AardvarkEncoder` (instrument set-convs + 277-channel stack + patch-3 ViT), `AardvarkDecoder` (U-Net → station set-conv → MLP), `AardvarkE2E`, official-checkpoint / sample loaders |
-
-```python
-import torch
-from weatherai.models.aardvark import (AardvarkProcessor_lite, AardvarkE2E, load_official_encoder, load_official_decoder,
-                                       load_official_processor, load_official_sample)
-
-m = AardvarkProcessor_lite().eval()                    # 0.23 M params, random init, 60x31 grid; trainable
-y = m(torch.randn(1, 35, 60, 31))                      # (1, 31, 60, 24): normalised 24 h tendency
-
-# Official weights (HF dataset av555/aardvark-weather, trained_model/...) - all strict=True loads:
-enc = load_official_encoder("trained_model/encoder/epoch_96")
-dec = load_official_decoder("trained_model/decoder/tas/lt_1/epoch_18")
-proc = load_official_processor("trained_model/processor/forecast_1/epoch_0")
-task = load_official_sample("aardvark-weather-public/data/sample_data_final.pkl")     # official sample (CUDA pickle -> CPU)
-station, forecast, init_state = AardvarkE2E(enc, [proc], dec).eval()(task, return_gridded=True)  # 24 h forecast; station = normalised tas
-# every piece can be built with other sizes / depths and trained (see tests: tiny encoder+processor+decoder training step)
-```
-
-**Verified (CPU; official code run on the official sample as reference, `scripts/aardvark_system_reference.py`):**
-encoder initial state max |Δ| = 0.0 (atol 1e-5, rtol 1e-4); station decoder (tas, lt_1) max |Δ| = 0; E2E (encoder → 1 processor → decoder)
-station output max |Δ| = 2.9e-6, gridded forecast max relative error 8e-5 (values up to 1.2e5); processor on random input max |Δ| ≈ 2e-4
-(unchanged earlier check). Unit tests: set-conv vs naive loop, NaN handling, cylindrical conv shapes, parameter names, a training step on a tiny
-whole system. HF ZeroGPU: see [docs/model_status.md](docs/model_status.md).
-**Not implemented / not verified:** the official data loaders and training scripts (they depend on multi-TB local memmaps; the repo itself says they
-cannot be executed), the FiLM / attention options of the official U-Net (unused by the released weights), `e2e_finetuned` checkpoints (not loaded/tested),
-decoder checkpoints other than `tas/lt_1`, processors `forecast_2..10`, multi-step E2E, other station variables (`ws`), skill vs. observations.
-The official sample has one timestep only, so the comparison covers that single case.
-
-## WeatherNext Cyclones Mini — native PyTorch network (official Mini weights load), JAX wrapper kept as oracle
-
-WN-C / WeatherNext 2 (FGN, a *Functional Generative Network*) is the same family as GenCast/GraphCast (grid → icosahedral mesh → 16-layer k-hop
-transformer → grid) but with its own wiring: instead of a diffusion noise level, a 32-channel N(0,1) vector conditions every normalisation, the
-encoders/decoder are one big split-input / split-output linear over all variables, and the GNN edge MLPs use the "pre-gather matmul" form.
-`weatherai.models.weathernext_cyclones` now contains an **explicit native PyTorch port of that network** (`network.py`; transformer, attention
-and graph code are shared with the GenCast port), with the official `WeatherNextCyclones_Mini_<2024` weights converted 1:1 and
-`WeatherNextCyclonesWrapper` (official JAX, Python ≥ 3.12) retained only as a test/oracle path.
-
-```python
-import numpy as np, torch
-from weatherai.models.weathernext_cyclones import (
-    WeatherNextCyclonesNet_from_official, stack_grid_inputs, stack_mesh_inputs, unstack_outputs, download_checkpoint)
-
-lat = np.arange(-90, 90.5, 1.0, dtype=np.float32); lon = np.arange(0, 360, 1.0, dtype=np.float32)   # official 1° grid, 181x360
-net = WeatherNextCyclonesNet_from_official(download_checkpoint(), lat, lon, attention_type="triblockdiag")   # 56.7 M params, strict load
-# inputs: *normalised* fields in the official layout (see stack_grid_inputs), noise ~ N(0,1) of shape (batch, 32)
-gx = stack_grid_inputs(inputs, forcings, (181, 360)); mx = stack_mesh_inputs(inputs, forcings)
-y = net(gx, mx, torch.randn(1, 32))                  # (B, H*W, 101) one 6 h step, all 29 target variables
-fields = unstack_outputs(y, net.cfg, (181, 360))     # {name: (B,1,[13,]181,360)}
-```
-
-Trainable, config-driven variant (same modules, ~0.2 M params, fair-CRPS ensemble loss as in the official `fgn.Predictor`):
-`WeatherNextCyclonesNative_lite()` → `m.loss(grid_x, mesh_x, target, num_samples=2)`; example in `tests/models/weathernext_cyclones/test_wnc_native.py`.
-
-**Status — verified:**
-* All 376 official parameter arrays (56 684 133 weights) are consumed exactly once by `convert_official_params` and strict-load.
-* Network vs the **official JAX `ForwardPass`** (official Mini weights, random inputs + noise, plain `mha`; JAX/Haiku run on CPU):
-  * float64 reference, mesh_splits=2, k_hop=3, 13×24 grid, batch 2 (the *reference* is run with x64 and its bf16-oriented fp32 up-casts disabled, so rounding
-    cannot hide a structural error): native vs official max |Δ| **2.2e-12** (dense attention) / **2.1e-12** (banded attention) — test tolerance 1e-9.
-  * float32 official run, same small config: max |Δ| 1.4e-3 (outputs up to ~26; official-JAX f32 vs official-JAX f64 differ by 9.3e-4) — test tolerance 5e-3.
-  * **trained size** (mesh_splits=5 → 10 242 mesh nodes, k_hop 16, 181×360 grid, banded attention, float32): max |Δ| 2.8e-3 on outputs up to ~25
-    (per variable ≤ 2.9e-3; probabilities 3.5e-6) — test tolerance 5e-3 (the 65 MB reference is not committed; regenerate with `scripts/wnc_forward_reference.py full`).
-  * graph edge sets (ball query grid→mesh 101 892 edges; closest triangle mesh→grid 195 480 edges at full size, 576/936 at the small size) equal the official arrays.
-* HF ZeroGPU (RTX PRO 6000 Blackwell MIG, torch 2.13+cu130) `--pretrained` smoke: PASS — strict load, float64 max |Δ| 1.9e-12 / 1.6e-12 (dense / banded), float32 max |Δ|
-  7.6e-4 / 1.2e-3 (TF32 off) and 8.3e-4 / 1.3e-3 (TF32 default), peak 533 MB; Space unit tests: 5 passed, 10 skipped (the skips need local official ckpt or the JAX package; parity is covered by the smoke).
-
-**Not verified / not ported:** the `fgn.Predictor` wrapper stack (input/residual normalisation constants, NaN cleaning of SST, autoregressive rollout, the
-2-sample training ensemble), data pipeline/ERA5-HRES loading, the **cyclone tracker** (`cyclones/direct_tracker.py`) and IBTrACS pipeline; multi-step forecasts of the
-native model; the 0.25° / WN2 / `<2023` checkpoints; skill. The comparison is network-level on random inputs, not forecast-level on real data. The official TPU
-`splash_mha` kernel is not used (neither on our side nor in the reference). Stochastic sampling: noise is drawn iid N(0,1) as in the official `gaussian_noise_generator`.
-
-## Install / 安装
-
-```bash
-git clone https://github.com/GISWLH/WeatherAI.git
-cd WeatherAI
-pip install -e .
-# optional: pip install -e ".[dev]"
-```
-
-Requires Python ≥ 3.9, `torch`, `timm`, `numpy`.
-
-## Quick start / 快速开始
-
-```python
-from weatherai.models import Pangu, FuXi, FengWu, FengWu_lite, GraphCast, GraphCast_lite
-
-# FengWu lite — CPU-friendly defaults (64×128, 13 levels → 69 channels)
-fw = FengWu_lite()
-import torch
-x = torch.randn(1, 69, 64, 128)
-y = fw(x)  # (1, 69, 64, 128)
-
-# GraphCast lite — tiny mesh (level 1), residual next-step
-gc = GraphCast_lite()  # in_channels=4, img_size=(32, 64)
-y = gc(torch.randn(1, 4, 32, 64))
-
-# GraphCast with FengWu-width channels on a small grid
-gc69 = GraphCast_lite(in_channels=69)
-y69 = gc69(torch.randn(1, 69, 32, 64))
-
-# Pangu lite
-from weatherai.models import Pangu_lite
-pangu = Pangu_lite()
-```
-
-```python
-# Package-level re-exports
-from weatherai import Pangu, FuXi, FengWu, FengWu_lite, GraphCast, GraphCast_lite
-```
-
-## Tests / 测试
+| **Pangu-Weather** | `from weatherai.models import Pangu, Pangu_lite` | 3-D Earth-specific transformer · *Nature* 2023 · [paper](https://doi.org/10.1038/s41586-023-06185-3) · [docs](docs/models/pangu.md) · 🪶 |
+| **FuXi** | `from weatherai.models import FuXi` | Cube embedding + Swin-V2 U-Transformer · *npj Clim. Atmos. Sci.* 2023 · [paper](https://doi.org/10.1038/s41612-023-00512-1) · [docs](docs/models/fuxi.md) |
+| **FengWu** | `from weatherai.models import FengWu, FengWu_lite` | Multi-modal encode–fuse–decode · *Commun. Earth Environ.* 2025 · [paper](https://doi.org/10.1038/s43247-025-02502-y) · [docs](docs/models/fengwu.md) · 🪶 |
+| **GraphCast** | `from weatherai.models import GraphCast, GraphCast_lite` | Grid ↔ icosahedral-mesh GNN, stage-wise parity vs JAX and PhysicsNeMo · *Science* 2023 · [paper](https://doi.org/10.1126/science.adi2336) · [docs](docs/models/graphcast.md) · 🎯 ⚡ 🪶 |
+| **Aurora** | `from weatherai.models import Aurora, Aurora_lite, Aurora_small` | Perceiver + Swin-3D foundation model · *Nature* 2025 · [paper](https://doi.org/10.1038/s41586-025-09005-y) · [docs](docs/models/aurora.md) · 🔓 🎯 ⚡ 🪶 |
+| **NeuralGCM** | `from weatherai.models.neuralgcm import NeuralGCMLearnedComponents, train` | Differentiable dynamical core + learned physics; training in JAX · *Nature* 2024 · [paper](https://doi.org/10.1038/s41586-024-07744-y) · [docs](docs/models/neuralgcm.md) · 🔓 🎯 ⚡ 🪶 |
+| **Aardvark Weather** | `from weatherai.models.aardvark import AardvarkE2E, load_official_encoder` | End-to-end forecasting from raw observations · *Nature* 2025 · [paper](https://doi.org/10.1038/s41586-025-08897-0) · [docs](docs/models/aardvark.md) · 🔓 🎯 ⚡ 🪶 |
+
+### 🎲 Ensemble & generative
+
+| Model | Import | Notes |
+|-------|--------|-------|
+| **GenCast** | `from weatherai.models.gencast import GenCast_lite, GenCastDenoiser_from_official` | Diffusion ensemble: native denoiser + DPM-Solver++ sampler · *Nature* 2025 · [paper](https://doi.org/10.1038/s41586-024-08252-9) · [docs](docs/models/gencast.md) · 🔓 🎯 ⚡ 🪶 |
+| **FuXi-ENS** | `from weatherai.models.fuxi_ens import FuXiENS, FuXiENS_lite, load_official` | 2.5 B-parameter latent-noise ensemble, rebuilt from ONNX · *Sci. Adv.* 2025 · [paper](https://doi.org/10.1126/sciadv.adu2854) · [docs](docs/models/fuxi_ens.md) · 🔓 🎯 ⚡ 🪶 |
+| **ArchesWeather / Gen** | `from weatherai.models.arches import ArchesWeather_lite, ArchesWeatherGen_lite, convert` | 3-D attention forecaster + flow-matching generator · *Sci. Adv.* 2026 · [paper](https://doi.org/10.1126/sciadv.adx2372) · [docs](docs/models/arches.md) · 🔓 🎯 ⚡ 🪶 |
+| **NeuralGCM precipitation** | `from weatherai.models.neuralgcm import precip` | Stochastic precipitation checkpoints + trainable loss (JAX) · *Sci. Adv.* 2026 · [paper](https://doi.org/10.1126/sciadv.adv6891) · [docs](docs/models/neuralgcm_precip.md) · 🔓 ⚡ |
+
+### 🌊 Sub-seasonal to seasonal, climate & ocean
+
+| Model | Import | Notes |
+|-------|--------|-------|
+| **CAS-Canglong** 🆕 | `from weatherai.models.canglong import Canglong, Canglong_lite, load_official` | 3-D Earth-specific transformer for 1–3-month global SST · *Adv. Sci.* · [paper](https://doi.org/10.1002/advs.78271) · [docs](docs/models/canglong.md) · 🎯 🪶 |
+| **FuXi-S2S** | `from weatherai.models.fuxi_s2s.convert import load_official` | Sub-seasonal Swin-V2 ensemble (1.04 B), rebuilt from ONNX · *Nat. Commun.* 2024 · [paper](https://doi.org/10.1038/s41467-024-50714-1) · [docs](docs/models/fuxi_s2s.md) · 🔓 🎯 ⚡ 🪶 |
+| **UniCM** | `from weatherai.models.unicm import UniCM, UniCMConfig` | Coupled climate-mode transformer (ENSO and other modes) · *Nat. Mach. Intell.* 2026 · [paper](https://doi.org/10.1038/s42256-026-01245-5) · [docs](docs/models/unicm.md) · 🎯 ⚡ 🪶 |
+| **ORCA-DL** | `from weatherai.models.orca_dl import ORCADL, load_official` | Global 3-D ocean forecaster, monthly steps · *Sci. Adv.* 2025 · [paper](https://doi.org/10.1126/sciadv.adu2488) · [docs](docs/models/orca_dl.md) · 🔓 🎯 ⚡ |
+| **ACE2-ERA5** | `from weatherai.models.ace2 import ACE2, load_official` | Spherical Fourier neural operator climate emulator with conservation · *npj Clim. Atmos. Sci.* 2025 · [paper](https://doi.org/10.1038/s41612-025-01090-0) · [docs](docs/models/ace2.md) · 🔓 🎯 ⚡ |
+| **GenFocal** | `from weatherai.models.genfocal import GenFocalNet, reflow_loss, sample_flow` | Generative debiasing flow (lite core) · *Nat. Mach. Intell.* 2026 · [paper](https://doi.org/10.1038/s42256-026-01308-7) · [docs](docs/models/genfocal.md) · 🎯 ⚡ 🪶 |
+
+### 🌀 Regional & tropical cyclones
+
+| Model | Import | Notes |
+|-------|--------|-------|
+| **StormCast** | `from weatherai.models.stormcast import StormCast, StormCast_lite, load_official` | 3 km regional (HRRR) regression U-Net + EDM diffusion · *Sci. Adv.* 2026 · [paper](https://doi.org/10.1126/sciadv.adv0423) · [docs](docs/models/stormcast.md) · 🔓 🎯 ⚡ 🪶 |
+| **TropiCycloneNet** | `from weatherai.models.tropicyclonenet import TCNM, load_official` | Multimodal tropical-cyclone track + intensity · *Nat. Commun.* 2025 · [paper](https://doi.org/10.1038/s41467-025-61087-4) · [docs](docs/models/tropicyclonenet.md) · 🔓 🎯 ⚡ |
+| **WeatherNext Cyclones** | `from weatherai.models.weathernext_cyclones import WeatherNextCyclonesNet_from_official, WeatherNextCyclonesNative_lite` | Functional generative network for cyclones (Mini) · *Nature* 2026 · [paper](https://doi.org/10.1038/s41586-026-10953-2) · [docs](docs/models/weathernext_cyclones.md) · 🔓 🎯 ⚡ 🪶 |
+
+More: [all model pages](docs/models/README.md) · [verification log](docs/model_status.md) · [roadmap & planned models](docs/roadmap.md)
+
+## 🔬 What "verified" means
+
+For each port, the unchanged official code (PyTorch, JAX or onnxruntime) and the native module receive the same weights
+and inputs, and their outputs are compared; the scripts are in [`scripts/`](scripts) and the numbers in
+[`docs/results/`](docs/results). GPU runs use [`scripts/gpu_smoke.py`](scripts/gpu_smoke.py) on the Hugging Face Space.
+These are implementation checks, not forecast-skill claims; each model page lists what was **not** verified.
+
+## 🤗 Hugging Face
+
+- **Space** — [LonghaoWang/weatherai-graphcast-smoke](https://huggingface.co/spaces/LonghaoWang/weatherai-graphcast-smoke): ZeroGPU smoke tests for every model.
+- **Hub** — [LonghaoWang/WeatherAI](https://huggingface.co/LonghaoWang/WeatherAI): model card and model pages, synced from this repository by [`.github/workflows/sync_hf.yml`](.github/workflows/sync_hf.yml).
+- Official weights stay with their authors and keep their licences (Apache-2.0, MIT, CC-BY, CC-BY-NC(-ND), …): WeatherAI downloads them on demand and never redistributes them.
+
+## 🧪 Tests
 
 ```bash
 pip install -e ".[dev]"
-pytest tests/models/fengwu tests/models/graphcast -q
-# optional GraphCast parity (JAX needs clone + [parity] extras; PhysicsNeMo tests
-# need a PyG-enabled env and skip otherwise — see docs/graphcast_parity.md):
-# git clone https://github.com/google-deepmind/graphcast.git /workspace/tmp/graphcast-jax
-# pip install -e ".[parity]"
-# pytest tests/parity/graphcast -q
-# optional fuller suite (may be slower / need more RAM for full Pangu):
-# pytest tests -q
+pytest tests/models -q          # unit tests; parity references are stored under tests/models/*/data
 ```
 
-## Attribution / 致谢与许可
+## 📖 Citation
 
-- **License:** [MIT](LICENSE) — Copyright (c) 2026 Longhao Wang (GISWLH), plus
-  retained WeatherLearn copyright as required by MIT.
-- **NOTICE:** [NOTICE](NOTICE) — WeatherLearn (Copyright Zhuoqun Li / contributors),
-  FengWu paper (Chen et al., arXiv:2304.02948), GraphCast paper (Lam et al.,
-  arXiv:2212.12794; independent reimplementation).
-  Parity tests may reference google-deepmind/graphcast and NVIDIA/physicsnemo (both
-  Apache-2.0) from local clones; that code is not vendored into `weatherai/`.
-- Adapted code origin (MIT): https://github.com/lizhuoq/WeatherLearn
+Please cite the original paper of each model you use (linked above) and, if WeatherAI helped, this repository
+([`CITATION.cff`](CITATION.cff)):
 
-### Papers / 论文
+```bibtex
+@software{wang_weatherai,
+  author = {Wang, Longhao},
+  title  = {{WeatherAI}: a PyTorch model zoo of AI weather and climate models},
+  url    = {https://github.com/GISWLH/WeatherAI},
+  year   = {2026}
+}
+```
 
-Journal versions were checked against Crossref (DOIs resolve); preprints are listed for reference.
-期刊版本已对照 Crossref 核实（DOI 可解析）；预印本仅供参考。
+## 🤝 Contributing
 
-- Pangu-Weather — *Nature* 2023, [doi:10.1038/s41586-023-06185-3](https://doi.org/10.1038/s41586-023-06185-3)
-- FuXi — *npj Climate and Atmospheric Science* 2023, [doi:10.1038/s41612-023-00512-1](https://doi.org/10.1038/s41612-023-00512-1)
-- FengWu — *Communications Earth & Environment* 2025, [doi:10.1038/s43247-025-02502-y](https://doi.org/10.1038/s43247-025-02502-y)
-- GraphCast — *Science* 2023, [doi:10.1126/science.adi2336](https://doi.org/10.1126/science.adi2336)
-- NeuralGCM — *Nature* 2024, [doi:10.1038/s41586-024-07744-y](https://doi.org/10.1038/s41586-024-07744-y)
-- GenCast — *Nature* 2025, [doi:10.1038/s41586-024-08252-9](https://doi.org/10.1038/s41586-024-08252-9)
-- Aurora — *Nature* 2025, [doi:10.1038/s41586-025-09005-y](https://doi.org/10.1038/s41586-025-09005-y)
-- Aardvark Weather — *Nature* 2025, [doi:10.1038/s41586-025-08897-0](https://doi.org/10.1038/s41586-025-08897-0)
-- WeatherNext Cyclones (WN-C) — *Nature* 2026, [doi:10.1038/s41586-026-10953-2](https://doi.org/10.1038/s41586-026-10953-2)
-- FuXi-ENS — *Science Advances* 2025, [doi:10.1126/sciadv.adu2854](https://doi.org/10.1126/sciadv.adu2854)
-- StormCast — *Science Advances* 2026, [doi:10.1126/sciadv.adv0423](https://doi.org/10.1126/sciadv.adv0423)
-- ArchesWeatherGen — *Science Advances* 2026, [doi:10.1126/sciadv.adx2372](https://doi.org/10.1126/sciadv.adx2372)
-- ACE2 — *npj Climate and Atmospheric Science* 2025, [doi:10.1038/s41612-025-01090-0](https://doi.org/10.1038/s41612-025-01090-0)
-- TropiCycloneNet — *Nature Communications* 2025, [doi:10.1038/s41467-025-61087-4](https://doi.org/10.1038/s41467-025-61087-4)
-- ORCA-DL — *Science Advances* 2025, [doi:10.1126/sciadv.adu2488](https://doi.org/10.1126/sciadv.adu2488)
-- NeuralGCM precipitation — *Science Advances* 2026, [doi:10.1126/sciadv.adv6891](https://doi.org/10.1126/sciadv.adv6891)
-- FuXi-DA (planned) — *npj Climate and Atmospheric Science* 2025, [doi:10.1038/s41612-025-01039-3](https://doi.org/10.1038/s41612-025-01039-3)
-- NowcastNet (planned) — *Nature* 2023, [doi:10.1038/s41586-023-06184-4](https://doi.org/10.1038/s41586-023-06184-4)
+Issues and pull requests are welcome. A new model is accepted when it comes with a native module, a Lite config, a parity
+script against the official code, unit tests and a page in `docs/models/`. If WeatherAI saves you time, a ⭐ helps others find it.
 
-## Roadmap / 后续
+## License
 
-- [ ] Pretrained weight download helpers (no invented checkpoints in-repo)
-- [ ] Training / finetune recipes (kept out of v0.1 for a clean starter zoo)
-- [x] GraphCast small-scale JAX parity (mesh / MLP / one GraphNet layer)
-- [x] GraphCast stage parity (graphs, Grid2Mesh, processor N≤16, Mesh2Grid) vs JAX + PhysicsNeMo (tiny cases; NV processor aggregation is an inherent, documented difference)
-- [ ] GraphCast checkpoint loading / full-scale parity
-- [ ] More models and evaluation utilities
-
-### Planned models / 计划加入的模型
-
-Citations checked against Crossref; "code" links point to the authors' official releases (not vendored here). Batch 2 (rows after FuXi-DA, selected 2026-10-02) is **not blocked**: official code and/or weights are public. Plan: [docs/model_status.md](docs/model_status.md#batch-2--nature--science-family-models-plan); survey: [docs/candidate_models_nature_science.md](docs/candidate_models_nature_science.md).
-
-引用已对照 Crossref 核实；“Code”为作者官方仓库（本仓库不内置）。第二批（FuXi-DA 之后）并未受阻：官方代码和/或权重公开。
-
-| Model | Journal | Official code / weights |
-|-------|---------|-------------------------|
-| **NowcastNet** | *Nature* 2023, [doi:10.1038/s41586-023-06184-4](https://doi.org/10.1038/s41586-023-06184-4) | [Code Ocean capsule](https://doi.org/10.24433/CO.0832447.v1) (code + weights per paper) — not started, blocked (403 without login) |
-| **FuXi-ENS** | *Science Advances* 2025 ⚠️ not Nature family, [doi:10.1126/sciadv.adu2854](https://doi.org/10.1126/sciadv.adu2854) | [tpys/FuXi-ENS](https://github.com/tpys/FuXi-ENS) (inference scripts) · [Zenodo 10.5281/zenodo.15124541](https://zenodo.org/records/15124541) (CC-BY-NC-4.0, ONNX only) — **implemented, see FuXi-ENS section** |
-| **FuXi-DA** | *npj Climate and Atmospheric Science* 2025, [doi:10.1038/s41612-025-01039-3](https://doi.org/10.1038/s41612-025-01039-3) | [xuxiaoze/FuXi-DA](https://github.com/xuxiaoze/FuXi-DA) (inference driver only; `model/`, `test_data/` unpublished) — blocked |
-| **StormCast** | *Science Advances* 2026, [doi:10.1126/sciadv.adv0423](https://doi.org/10.1126/sciadv.adv0423) | [NVIDIA/physicsnemo](https://github.com/NVIDIA/physicsnemo/tree/main/examples/weather/stormcast) (Apache-2.0) · HF [nvidia/stormcast-v1-era5-hrrr](https://huggingface.co/nvidia/stormcast-v1-era5-hrrr) (Apache-2.0) — **implemented (batch 2 #1)** |
-| **ArchesWeatherGen** | *Science Advances* 2026, [doi:10.1126/sciadv.adx2372](https://doi.org/10.1126/sciadv.adx2372) | [INRIA/geoarches](https://github.com/INRIA/geoarches) (BSD) · HF [gcouairon/ArchesWeather](https://huggingface.co/gcouairon/ArchesWeather) (BSD) — **implemented (batch 2 #2)** |
-| **ACE2** | *npj Climate and Atmospheric Science* 2025, [doi:10.1038/s41612-025-01090-0](https://doi.org/10.1038/s41612-025-01090-0) | [ai2cm/ace](https://github.com/ai2cm/ace) (Apache-2.0) · HF [allenai/ACE2-ERA5](https://huggingface.co/allenai/ACE2-ERA5) (Apache-2.0) — **implemented (batch 2 #3)** |
-| **NeuralGCM precipitation** | *Science Advances* 2026, [doi:10.1126/sciadv.adv6891](https://doi.org/10.1126/sciadv.adv6891) | [neuralgcm/neuralgcm](https://github.com/neuralgcm/neuralgcm) (Apache-2.0) · [Zenodo 17109230](https://zenodo.org/records/17109230) (CC-BY-4.0) — **implemented (batch 2 #4)** |
-| **ORCA-DL** | *Science Advances* 2025, [doi:10.1126/sciadv.adu2488](https://doi.org/10.1126/sciadv.adu2488) | [OpenEarthLab/ORCA-DL](https://github.com/OpenEarthLab/ORCA-DL) (no LICENSE file) · HF dataset `JayKuo/ORCA-DL-data` — **implemented (batch 2 #5), see the ORCA-DL section** |
-| **TropiCycloneNet** | *Nature Communications* 2025, [doi:10.1038/s41467-025-61087-4](https://doi.org/10.1038/s41467-025-61087-4) | [xiaochengfuhuo/TropiCycloneNet](https://github.com/xiaochengfuhuo/TropiCycloneNet) (no LICENSE file) · [Zenodo 15024028](https://doi.org/10.5281/zenodo.15024028) (CC-BY-4.0) — **implemented (batch 2 #6), see the TropiCycloneNet section** |
-| **FuXi-S2S** | *Nature Communications* 2024, [doi:10.1038/s41467-024-50714-1](https://doi.org/10.1038/s41467-024-50714-1) | ONNX only · [Zenodo 15718402](https://zenodo.org/records/15718402) (**CC-BY-NC-ND-4.0**, weights not redistributed) — *native port* |
-| **UniCM** | *Nature Machine Intelligence* 2026, [doi:10.1038/s42256-026-01245-5](https://doi.org/10.1038/s42256-026-01245-5) | [tsinghua-fib-lab/UniCM-Global-Climate-Modes](https://github.com/tsinghua-fib-lab/UniCM-Global-Climate-Modes) (MIT) · [Zenodo 19173780](https://doi.org/10.5281/zenodo.19173780) (code only; no checkpoint) — *native port* |
-| **GenFocal** | *Nature Machine Intelligence* 2026 (online 2026-09-28), [doi:10.1038/s42256-026-01308-7](https://doi.org/10.1038/s42256-026-01308-7) | [swirl-dynamics/genfocal](https://github.com/google-research/swirl-dynamics/tree/main/swirl_dynamics/projects/genfocal) (Apache-2.0, JAX) · [Zenodo 21285802](https://zenodo.org/records/21285802) (CC-BY-4.0, 8.7 + 39 GB) — *lite flow core; checkpoints not loaded* |
-
-Notes / 备注:
-- FuXi-ENS is *Science Advances* (AAAS), not a Nature-family journal; kept as a FuXi-family model. FuXi-ENS 发表于 *Science Advances*，不属于 Nature 系列。
-- FuXi-DA is in *npj Climate and Atmospheric Science* (Nature family). FuXi-DA 发表于 *npj Climate and Atmospheric Science*（Nature 系列）。
-- GraphCast status unchanged: only Grid2Mesh / processor / Mesh2Grid checked at mesh levels 0–1; no official checkpoint loaded, no whole-model parity claim.
-
-Roadmap checklist:
-
-- [ ] NowcastNet — **blocked**: only source is the Code Ocean capsule (codeocean.com/capsule/3935105), HTTP 403 without login; no official GitHub; not started
-- [~] NeuralGCM — **partial**: learned components + SH layer native and checked vs official JAX; dycore/feature builders not ported (JAX wrapper is the only forecast path)
-- [x] GenCast — native denoiser (official Mini weights load, network matches JAX to 5e-5) + verified sampler; full-model/SH-noise/normalisation not ported
-- [x] Aurora — native PyTorch; official small checkpoint strict-loads, output matches official package
-- [x] Aardvark Weather — native encoder + processor + station decoder; official checkpoints strict-load, E2E matches official code on the sample (data loaders/training scripts not ported)
-- [x] WeatherNext Cyclones (WN-C) — native network; official Mini weights strict-load, match JAX (2e-12 float64 / 3e-3 float32 at trained size); tracker/rollout/normalisation not ported
-- [~] FuXi-ENS — **native port from official ONNX** (weights from Zenodo, CC-BY-NC-4.0, never committed): strict load, one forward step with fixed noise matches onnxruntime (CPU and HF GPU, fp32); multi-step/15-day ensemble, skill and official-weight training **not** verified; lite config trainable
-- [ ] FuXi-DA — **blocked**: `model/assimilation_v6.py`, `final_cast_10_assim_model.pth` and test data are not public (upstream issue xuxiaoze/FuXi-DA#2 unanswered); architecture cannot be reproduced
-- [~] Batch 2 (one commit per model; status in docs/model_status.md): **done** — StormCast (parity + HF GPU smoke, no real-data run), ArchesWeatherGen (geoarches parity, HF GPU smoke, one real case), ACE2 (fme rollout parity, HF GPU smoke, one 8-day real case), NeuralGCM precipitation (official checkpoints run, trainable loss, one real case, HF GPU smoke; no native-torch port), ORCA-DL (official-code parity, HF GPU smoke, one 11-month real case), TropiCycloneNet (bit-exact vs official code, NI test split, HF GPU smoke), FuXi-S2S (onnxruntime parity, HF GPU smoke), UniCM (bit-exact vs official code with random weights, HF GPU smoke; no checkpoint exists); GenFocal (lite: flow loss + RK4 sampler parity vs official JAX, HF GPU smoke; official network and checkpoints not ported); **remaining** — none
-
-## Disclaimer
-
-Research / educational code. Forecast skill depends on data, training, and
-weights — this repo ships **architectures**, not operational NWP replacements.
+[MIT](LICENSE) — Copyright (c) 2026 Longhao Wang (GISWLH); adapted code from [WeatherLearn](https://github.com/lizhuoq/WeatherLearn)
+(MIT), see [NOTICE](NOTICE). Model weights are under their authors' licences. Research and educational code: forecast skill
+depends on data, training and weights, and nothing here replaces an operational forecasting system.
