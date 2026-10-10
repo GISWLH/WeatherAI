@@ -1,0 +1,28 @@
+{
+ "config": "lite",
+ "params": 286577,
+ "params_official": 315258,
+ "strict_load": "<All keys matched successfully>",
+ "torch": "2.14.1+cu130",
+ "device": "cpu",
+ "dtype": "float32",
+ "official_forward_s": 1.4,
+ "native_forward_s": 1.29,
+ "out_shape": [
+  2,
+  1,
+  3,
+  32,
+  64
+ ],
+ "max_abs": 0.0,
+ "rel_l2": 0.0,
+ "out_std": 0.26293429732322693,
+ "loss": [
+  3.0744402408599854,
+  3.0744402408599854
+ ],
+ "grad_max_rel_l2": 0.0,
+ "grad_params_compared": 115,
+ "peak_rss_gb": 0.8
+}

@@ -106,6 +106,15 @@ Used only as a second numerical reference in `tests/parity/graphcast/`
 relicensed as part of, the MIT `weatherai/` package. Documented behavioural
 differences are listed in `docs/graphcast_parity.md`.
 
+7) CAS-Canglong (MIT)
+--------------------
+Source: https://github.com/GISWLH/CAS-Canglong
+Copyright (c) 2024 Longhao Wang
+
+`weatherai/models/canglong/` is a re-implementation of the official model (notebook `notebook/model.ipynb` and
+`utils/*.py`) with identical parameter names; the transformer blocks are the WeatherLearn-derived Pangu modules above.
+Pretrained weights (figshare 10.6084/m9.figshare.26779969) are not redistributed.
+
 Package rename
 --------------
 Imports use the package name `weatherai` (not `weatherlearn`). Relative module

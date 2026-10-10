@@ -1101,7 +1101,47 @@ def smoke_genfocal(device: str) -> dict:
     return res
 
 
-SMOKES = {"genfocal": smoke_genfocal, "unicm": smoke_unicm, "fuxi_s2s": smoke_fuxi_s2s, "tcn": smoke_tcn, "orca_dl": smoke_orca_dl, "ngcm_precip": smoke_ngcm_precip, "ngcm_precip_train": smoke_ngcm_precip_train, "ngcm_evap": smoke_ngcm_evap, "ace2": smoke_ace2, "arches": smoke_arches, "stormcast": smoke_stormcast, "fuxi_ens": smoke_fuxi_ens, "neuralgcm_train": smoke_neuralgcm_train, "weathernext_cyclones": smoke_weathernext_cyclones, "aardvark": smoke_aardvark, "gencast": smoke_gencast, "neuralgcm": smoke_neuralgcm, "aurora": smoke_aurora, "graphcast": smoke_graphcast}
+def smoke_canglong(device: str) -> dict:
+    """Random weights (figshare checkpoint not fetched): device-vs-official parity of the stored lite reference, a lite training
+    step through the official loss, then one full-size forward (1, 8, 16, 721, 1440) -> (1, 1, 3, 721, 1440)."""
+    import time
+
+    import numpy as np
+
+    from weatherai.models.canglong import Canglong, CanglongConfig, canglong_loss
+
+    res: dict = {}
+    d = np.load(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "tests", "models", "canglong", "data", "ref_lite.npz"))
+    cfg = CanglongConfig.lite()
+    m = Canglong(cfg)
+    m.load_state_dict({k[3:]: torch.from_numpy(d[k]) for k in d.files if k.startswith("sd/")}, strict=True)
+    m = m.to(device).eval()
+    with torch.no_grad():
+        y = m(torch.from_numpy(d["x"]).to(device)).cpu()
+    res["lite_vs_official_max_abs"] = float((y - torch.from_numpy(d["y"])).abs().max())
+    res["lite_ok"] = res["lite_vs_official_max_abs"] < 1e-3
+    m.train()
+    tgt = torch.randn(cfg.out_months, *cfg.img_size, generator=torch.Generator().manual_seed(0)).to(device)   # not constant: the loss has a correlation term
+    loss = canglong_loss(m(torch.from_numpy(d["x"][:1]).to(device))[0, 0], tgt)
+    loss.backward()
+    res["lite_grads_finite"] = all(bool(torch.isfinite(p.grad).all()) for p in m.parameters() if p.grad is not None)
+    torch.manual_seed(0)
+    big = Canglong(CanglongConfig.official()).to(device).eval()
+    res["params"] = sum(p.numel() for p in big.parameters())
+    x = torch.randn(1, 8, 16, 721, 1440, device=device)
+    t = time.time()
+    with torch.no_grad():
+        out = big(x)
+    if device.startswith("cuda"):
+        torch.cuda.synchronize()
+        res["peak_mem_gb"] = round(torch.cuda.max_memory_allocated() / 1e9, 2)
+    res["forward_seconds"] = round(time.time() - t, 2)
+    res["out_shape"] = list(out.shape)
+    res["out_finite"] = bool(torch.isfinite(out).all())
+    return res
+
+
+SMOKES = {"canglong": smoke_canglong, "genfocal": smoke_genfocal, "unicm": smoke_unicm, "fuxi_s2s": smoke_fuxi_s2s, "tcn": smoke_tcn, "orca_dl": smoke_orca_dl, "ngcm_precip": smoke_ngcm_precip, "ngcm_precip_train": smoke_ngcm_precip_train, "ngcm_evap": smoke_ngcm_evap, "ace2": smoke_ace2, "arches": smoke_arches, "stormcast": smoke_stormcast, "fuxi_ens": smoke_fuxi_ens, "neuralgcm_train": smoke_neuralgcm_train, "weathernext_cyclones": smoke_weathernext_cyclones, "aardvark": smoke_aardvark, "gencast": smoke_gencast, "neuralgcm": smoke_neuralgcm, "aurora": smoke_aurora, "graphcast": smoke_graphcast}
 
 
 def run(name: str, device: str, **kw) -> dict:

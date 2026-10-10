@@ -1,4 +1,4 @@
-"""Model zoo: Pangu, FuXi, FengWu, GraphCast, Aurora (wrapper) and more."""
+"""Model zoo: Pangu, FuXi, FengWu, GraphCast, Aurora, CAS-Canglong and more."""
 
 from .pangu.pangu import Pangu, Pangu_lite
 from .fuxi.fuxi import Fuxi
@@ -11,6 +11,7 @@ from .weathernext_cyclones.wnc import WeatherNextCyclonesWrapper, WeatherNextCyc
 from .weathernext_cyclones import WeatherNextCyclonesNet, WeatherNextCyclonesNet_from_official, WeatherNextCyclonesNative_lite, WNCEnsemble
 from .neuralgcm.neuralgcm import NeuralGCM_lite, NeuralGCMWrapper
 from .fuxi_ens import FuXiENS, FuXiENS_lite, FuXiENSConfig, FuXiENSNoise
+from .canglong import Canglong, Canglong_lite, CanglongConfig
 
 # Preferred alias (paper-style capitalization)
 FuXi = Fuxi
@@ -42,4 +43,7 @@ __all__ = [
     "WeatherNextCyclonesNet_from_official",
     "WeatherNextCyclonesNative_lite",
     "WNCEnsemble",
+    "Canglong",
+    "Canglong_lite",
+    "CanglongConfig",
 ]

@@ -1,0 +1,22 @@
+{
+ "config": "official",
+ "params": 43906258,
+ "params_official": 43906258,
+ "strict_load": "<All keys matched successfully>",
+ "torch": "2.14.1+cu130",
+ "device": "cpu",
+ "dtype": "float32",
+ "official_forward_s": 63.84,
+ "native_forward_s": 52.42,
+ "out_shape": [
+  1,
+  1,
+  3,
+  721,
+  1440
+ ],
+ "max_abs": 0.0,
+ "rel_l2": 0.0,
+ "out_std": 0.5671015977859497,
+ "peak_rss_gb": 9.09
+}
