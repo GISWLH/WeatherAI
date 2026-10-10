@@ -61,3 +61,7 @@ checkpoints/
 # Local HF Space staging (uploaded via huggingface_hub)
 hf_space_graphcast/
 
+
+# Node (scripts/brand)
+node_modules/
+package-lock.json

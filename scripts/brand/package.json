@@ -1,0 +1,14 @@
+{
+  "name": "weatherai-brand-assets",
+  "private": true,
+  "description": "Generates docs/assets (logo, banner, social preview) in an Excalidraw-like hand-drawn style",
+  "type": "module",
+  "scripts": {
+    "build": "node make_assets.mjs"
+  },
+  "devDependencies": {
+    "@excalidraw/excalidraw": "0.18.1",
+    "playwright-core": "1.56.1",
+    "roughjs": "4.6.6"
+  }
+}
