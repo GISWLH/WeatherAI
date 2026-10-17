@@ -1,3 +1,7 @@
+<!-- readme-visual-refresh:banner -->
+![WeatherAI — hand-drawn project banner](assets/readme/banner.svg)
+<!-- /readme-visual-refresh:banner -->
+
 <div align="center">
 
 <img src="docs/assets/banner.png" alt="WeatherAI: 20 peer-reviewed weather and climate AI models in one readable PyTorch library" width="100%">
@@ -139,3 +143,7 @@ script against the official code, unit tests and a page in `docs/models/`. If We
 [MIT](LICENSE) — Copyright (c) 2026 Longhao Wang (GISWLH); adapted code from [WeatherLearn](https://github.com/lizhuoq/WeatherLearn)
 (MIT), see [NOTICE](NOTICE). Model weights are under their authors' licences. Research and educational code: forecast skill
 depends on data, training and weights, and nothing here replaces an operational forecasting system.
+
+<!-- readme-visual-refresh:artwork-source -->
+[Editable banner artwork · Excalidraw](assets/readme/banner.excalidraw)
+<!-- /readme-visual-refresh:artwork-source -->
