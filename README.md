@@ -147,3 +147,14 @@ depends on data, training and weights, and nothing here replaces an operational 
 <!-- readme-visual-refresh:artwork-source -->
 [Editable banner artwork · Excalidraw](assets/readme/banner.excalidraw)
 <!-- /readme-visual-refresh:artwork-source -->
+
+
+<!-- readme-visual-refresh:execution -->
+## Demonstration captured on EHPC · 17 October 2026
+
+![New visualization of the repository's existing parity-check JSON. This displays a recorded historical check; it is not a new training or model-validation run.](assets/readme/execution-result.png)
+
+New visualization of the repository's existing parity-check JSON. This displays a recorded historical check; it is not a new training or model-validation run.
+
+[Execution record and checksums](assets/readme/execution-record.json).
+<!-- /readme-visual-refresh:execution -->

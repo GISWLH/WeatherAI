@@ -1,0 +1,64 @@
+{
+  "repo": "GISWLH/WeatherAI",
+  "environment": "EHPC PBS",
+  "execution_scope": "New visualization of the repository's existing parity-check JSON. This displays a recorded historical check; it is not a new training or model-validation run.",
+  "exit_code": 0,
+  "output": {
+    "path": "assets/readme/execution-result.png",
+    "sha256": "a9f5a990db1486d4a66071ee226bb848f0fbe3a6540d14da4b140d8d4fd3de9e"
+  },
+  "python": "3.11.9 (main, Apr 19 2024, 16:48:06) [GCC 11.2.0]",
+  "versions": {
+    "numpy": "1.26.4",
+    "pandas": "2.2.3",
+    "matplotlib": "3.9.4",
+    "scipy": "1.13.1",
+    "scikit-learn": "1.5.2",
+    "seaborn": "0.13.2",
+    "shap": "0.46.0",
+    "numba": "0.60.0",
+    "xgboost": "1.7.6",
+    "torch": "2.2.2+cpu",
+    "cartopy": "0.23.0",
+    "shapely": "2.0.6",
+    "pyproj": "3.6.1",
+    "requests": "2.32.4"
+  },
+  "started_at_utc": "2026-10-17T17:40:44.492112+00:00",
+  "finished_at_utc": "2026-10-17T17:40:45.056938+00:00",
+  "elapsed_seconds": 0.5648250519298017,
+  "source_files": [
+    {
+      "path": "readme_demo.py",
+      "sha256": "a9afe0b768967d164e0897de8aa4029dfbf01060e9b7d9eaa59b6fa7dc6504a3",
+      "bytes": 1590
+    }
+  ],
+  "input_files": [
+    {
+      "path": "source-provenance.json",
+      "sha256": "506956021b119df11b25f53ecc5c3d28e9c2d250cb12aebe0407f1b6a371d5b0",
+      "bytes": 575
+    },
+    {
+      "path": "docs/results/canglong_parity_lite.json",
+      "sha256": "50fa82d385c869f967b1e12bb13e01b6921ef6d357840174db3595f455da040d",
+      "bytes": 485
+    },
+    {
+      "path": "docs/results/orca_dl_parity_lite.json",
+      "sha256": "c745865e95a5f1fd20072fb9c9292e5485734a14c6bf7e11ee5488bed01949a5",
+      "bytes": 94
+    },
+    {
+      "path": "docs/results/tcn_parity.json",
+      "sha256": "8916c232f3d7a5a893d39ddef2fb9f0f411ec5015b435263518f7f8ea4ac46ff",
+      "bytes": 690
+    },
+    {
+      "path": "docs/results/unicm_parity_lite.json",
+      "sha256": "cebcf08ad667e162419eaf1723d0cd357dfa5d6a52b638691ed0db512afd9896",
+      "bytes": 1357
+    }
+  ]
+}
