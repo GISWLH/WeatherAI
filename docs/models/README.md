@@ -28,5 +28,5 @@ published on the Hugging Face Hub ([LonghaoWang/WeatherAI](https://huggingface.c
 | 🌀 Regional / cyclones | TropiCycloneNet | [tropicyclonenet.md](tropicyclonenet.md) | *Nature Communications* 2025, [doi:10.1038/s41467-025-61087-4](https://doi.org/10.1038/s41467-025-61087-4) |
 | 🌀 Regional / cyclones | WeatherNext Cyclones | [weathernext_cyclones.md](weathernext_cyclones.md) | *Nature* 2026, [doi:10.1038/s41586-026-10953-2](https://doi.org/10.1038/s41586-026-10953-2) |
 
-Journal versions were checked against Crossref when they were added (CAS-Canglong: DOI supplied by the author; Crossref was
-not reachable from the build environment). Planned and blocked models (FuXi-DA, NowcastNet): [roadmap](../roadmap.md).
+Journal versions were checked against Crossref when they were added (CAS-Canglong: checked 2026-10-18, *Advanced Science*,
+published 15 October 2026, article e78271). Planned and blocked models (FuXi-DA, NowcastNet): [roadmap](../roadmap.md).

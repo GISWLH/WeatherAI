@@ -21,7 +21,7 @@
 
 - 🧩 **20 モデルを 1 つのライブラリで** —— Pangu、GraphCast、Aurora、GenCast、NeuralGCM、FuXi-S2S、CAS-Canglong などを、同じ `import` 形式・テンソル入出力で扱えます。モデルごとに環境を作り分ける必要はありません。
 - 🔀 **マルチフレームワーク** —— 全モデルをネイティブ PyTorch で提供しつつ、重要な箇所では公式 **JAX** コードを保持（NeuralGCM の学習と降水モデル）し、GraphCast・GenCast・WeatherNext の数値リファレンスとしても利用します。**ONNX** のみで公開されたモデル（FuXi-ENS、FuXi-S2S）は PyTorch モジュールとして復元済みです。CPU と **CUDA** GPU の両方で動作します。
-- ✅ **書き直しではなく「検証済み」** —— 13 モデルで公式チェックポイントを strict に読み込め、出力は公式実装と一致します（多くはビット単位で一致）。すべての主張に検証スクリプトと JSON の結果があり、GPU 動作は Hugging Face ZeroGPU Space 上の NVIDIA Blackwell GPU で確認しています。
+- ✅ **書き直しではなく「検証済み」** —— 14 モデルで公式チェックポイントを strict に読み込め、出力は公式実装と一致します（多くはビット単位で一致）。すべての主張に検証スクリプトと JSON の結果があり、GPU 動作は Hugging Face ZeroGPU Space 上の NVIDIA Blackwell GPU で確認しています。
 - 🪶 **フルサイズと Lite** —— 本格的な実験には論文と同じ規模のネットワークを、手軽な試行には 15 モデルで用意した Lite 構成（同じコード・小さな格子）を。ノート PC の CPU や小容量 GPU 1 枚でも学習できます。
 
 ## 🚀 クイックスタート
@@ -69,7 +69,7 @@ aurora = Aurora_small(pretrained=True)                  # 公式の重み（約 
 
 | Model | Import | Notes |
 |-------|--------|-------|
-| **CAS-Canglong** 🆕 | `from weatherai.models.canglong import Canglong, Canglong_lite, load_official` | 3 次元 Earth-specific Transformer による 1〜3 か月先の全球海面水温予測 · *Adv. Sci.* · [論文](https://doi.org/10.1002/advs.78271) · [docs](docs/models/canglong.md) · 🎯 🪶 |
+| **CAS-Canglong** 🆕 | `from weatherai.models.canglong import Canglong, Canglong_lite, load_official` | 3 次元 Earth-specific Transformer による 1〜3 か月先の全球海面水温予測 · *Adv. Sci.* · [論文](https://doi.org/10.1002/advs.78271) · [docs](docs/models/canglong.md) · 🔓 🎯 ⚡ 🪶 |
 | **FuXi-S2S** | `from weatherai.models.fuxi_s2s.convert import load_official` | 季節内予測 Swin-V2 アンサンブル（10.4 億パラメータ）、ONNX から復元 · *Nat. Commun.* 2024 · [論文](https://doi.org/10.1038/s41467-024-50714-1) · [docs](docs/models/fuxi_s2s.md) · 🔓 🎯 ⚡ 🪶 |
 | **UniCM** | `from weatherai.models.unicm import UniCM, UniCMConfig` | 結合気候モード Transformer（ENSO など） · *Nat. Mach. Intell.* 2026 · [論文](https://doi.org/10.1038/s42256-026-01245-5) · [docs](docs/models/unicm.md) · 🎯 ⚡ 🪶 |
 | **ORCA-DL** | `from weatherai.models.orca_dl import ORCADL, load_official` | 全球 3 次元海洋予測（月単位ステップ） · *Sci. Adv.* 2025 · [論文](https://doi.org/10.1126/sciadv.adu2488) · [docs](docs/models/orca_dl.md) · 🔓 🎯 ⚡ |

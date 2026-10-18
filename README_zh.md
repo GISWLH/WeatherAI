@@ -21,7 +21,7 @@
 
 - 🧩 **20 个模型，一个库** —— Pangu、GraphCast、Aurora、GenCast、NeuralGCM、FuXi-S2S、CAS-Canglong 等，统一的 `import` 方式，张量进、张量出，无需为每个模型单独配置环境。
 - 🔀 **多框架支持** —— 全部提供原生 PyTorch 实现；在关键处保留官方 **JAX** 代码（NeuralGCM 训练与降水模型），并作为 GraphCast、GenCast、WeatherNext 的数值参照；仅发布 **ONNX** 的模型（FuXi-ENS、FuXi-S2S）被还原为 PyTorch 模块。CPU 与 **CUDA** GPU 均可运行。
-- ✅ **经过验证，而不只是重写** —— 13 个模型可严格（strict）加载官方权重，输出与官方实现一致（多数逐位相同）。每条结论都有对应脚本与 JSON 结果；GPU 运行在 Hugging Face ZeroGPU Space 的 NVIDIA Blackwell GPU 上测试。
+- ✅ **经过验证，而不只是重写** —— 14 个模型可严格（strict）加载官方权重，输出与官方实现一致（多数逐位相同）。每条结论都有对应脚本与 JSON 结果；GPU 运行在 Hugging Face ZeroGPU Space 的 NVIDIA Blackwell GPU 上测试。
 - 🪶 **完整版与 Lite 版** —— 论文规模的网络用于正式实验；另有 15 个模型提供 Lite 配置（同一套代码、小网格），可在笔记本 CPU 或单张小显存 GPU 上训练。
 
 ## 🚀 快速开始
@@ -69,7 +69,7 @@ aurora = Aurora_small(pretrained=True)                  # 官方权重（约 450
 
 | Model | Import | Notes |
 |-------|--------|-------|
-| **CAS-Canglong** 🆕 | `from weatherai.models.canglong import Canglong, Canglong_lite, load_official` | 三维地球特定 Transformer，预测未来 1–3 个月全球海表温度 · *Adv. Sci.* · [论文](https://doi.org/10.1002/advs.78271) · [docs](docs/models/canglong.md) · 🎯 🪶 |
+| **CAS-Canglong** 🆕 | `from weatherai.models.canglong import Canglong, Canglong_lite, load_official` | 三维地球特定 Transformer，预测未来 1–3 个月全球海表温度 · *Adv. Sci.* · [论文](https://doi.org/10.1002/advs.78271) · [docs](docs/models/canglong.md) · 🔓 🎯 ⚡ 🪶 |
 | **FuXi-S2S** | `from weatherai.models.fuxi_s2s.convert import load_official` | 次季节 Swin-V2 集合模型（10.4 亿参数），由 ONNX 还原 · *Nat. Commun.* 2024 · [论文](https://doi.org/10.1038/s41467-024-50714-1) · [docs](docs/models/fuxi_s2s.md) · 🔓 🎯 ⚡ 🪶 |
 | **UniCM** | `from weatherai.models.unicm import UniCM, UniCMConfig` | 耦合气候模态 Transformer（ENSO 等） · *Nat. Mach. Intell.* 2026 · [论文](https://doi.org/10.1038/s42256-026-01245-5) · [docs](docs/models/unicm.md) · 🎯 ⚡ 🪶 |
 | **ORCA-DL** | `from weatherai.models.orca_dl import ORCADL, load_official` | 全球三维海洋预报，月尺度步长 · *Sci. Adv.* 2025 · [论文](https://doi.org/10.1126/sciadv.adu2488) · [docs](docs/models/orca_dl.md) · 🔓 🎯 ⚡ |

@@ -42,9 +42,19 @@ model = load_official("canglong3_0005_600ep_base.tar")   # figshare checkpoint (
      are kept (`legacy_heads=True`) only so official checkpoints strict-load. The native forward skips them (same output).
   4. Loss: lead weights (1, 1.5, 2) multiply *inside* the square, and the correlation penalty box (named `nino` in the
      notebook, rows 288:336 × cols 480:640) covers 18°N–6°N, 120°E–160°E on the 90°N→90°S, 0→359.75°E grid.
-* **GPU:** `scripts/gpu_smoke.py canglong` (lite parity + lite training step + one full-size forward) is wired into the HF Space;
-  not run on a GPU yet (huggingface.co was not reachable from the build environment). The same smoke on CPU (2026-10-10):
-  **PASS** — lite vs official reference max |Δ| 0.0, lite gradients finite, full-size forward 54 s. Log: [model_status.md](../model_status.md).
-* **NOT verified / not done:** the released figshare checkpoint (not downloadable from the build environment, so the loader is
-  tested on synthetic pickles only), real-data inputs and the paper's skill scores, the data pipeline (ERA5 download,
-  normalisation statistics, land mask), training at full size.
+* **Released checkpoint on released data (GPU, fp32; `scripts/canglong_official_checkpoint.py`,
+  [`docs/results/canglong_official_checkpoint.json`](../results/canglong_official_checkpoint.json), 2026-10-18):** the figshare
+  `canglong3_0005_600ep_base.tar`, `normalized_data.pt` and `ocean_mask.npy` (MD5s equal to the figshare record) on an
+  NVIDIA RTX 4090. `load_official` and the unchanged notebook cell strict-load the same weights; on the last 16-month window
+  of the released data the two outputs are **identical (max |Δ| = 0.0)**, finite, 0.8 s per full-size forward. Against the
+  following 3 months of that file the predicted SST has area-weighted ocean RMSE 1.20 / 1.01 / 0.87 K at leads 1–3
+  (persistence 1.19 / 2.39 / 3.59 K) — one window, a sanity check rather than a skill estimate.
+* **GPU smoke:** `scripts/gpu_smoke.py canglong` (lite parity + lite training step + one full-size forward) is wired into the
+  HF Space; the same smoke on CPU (2026-10-10): **PASS** — lite vs official reference max |Δ| 0.0, lite gradients finite,
+  full-size forward 54 s. Log: [model_status.md](../model_status.md).
+* **Live forecasts from the same model family:** [canglong.earth](https://canglong.earth) and the Hugging Face Space
+  [LonghaoWang/CAS-Canglong](https://huggingface.co/spaces/LonghaoWang/CAS-Canglong) (16-month SST and ENSO outlook).
+  The operational 16-month model is a later Swin-transformer variant described in the
+  [CAS-Canglong repository](https://github.com/GISWLH/CAS-Canglong); it is not part of this port.
+* **NOT verified / not done:** the paper's skill scores over the full hindcast period, the data pipeline (ERA5 download,
+  normalisation statistics), training at full size.

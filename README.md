@@ -26,7 +26,7 @@ Load the official weights, compare with the original, fine-tune, or start from a
 - 🔀 **Multi-framework** — native PyTorch throughout; official **JAX** code is kept where it matters (NeuralGCM training and
   precipitation) and as the reference for GraphCast, GenCast and WeatherNext; **ONNX**-only releases (FuXi-ENS, FuXi-S2S)
   are rebuilt as PyTorch modules. Runs on CPU and **CUDA** GPUs.
-- ✅ **Verified, not just rewritten** — official checkpoints strict-load for 13 models, and outputs match the official
+- ✅ **Verified, not just rewritten** — official checkpoints strict-load for 14 models, and outputs match the official
   implementation (often bit-for-bit). Every claim has a script and a JSON result; GPU runs are tested on an NVIDIA
   Blackwell GPU through a Hugging Face ZeroGPU Space.
 - 🪶 **Full size and Lite** — the paper-size network for real experiments, plus Lite configs (same code, small grid) for 15
@@ -78,7 +78,7 @@ Each **docs** link opens a one-page summary: usage, what was verified, and what 
 
 | Model | Import | Notes |
 |-------|--------|-------|
-| **CAS-Canglong** 🆕 | `from weatherai.models.canglong import Canglong, Canglong_lite, load_official` | 3-D Earth-specific transformer for 1–3-month global SST · *Adv. Sci.* · [paper](https://doi.org/10.1002/advs.78271) · [docs](docs/models/canglong.md) · 🎯 🪶 |
+| **CAS-Canglong** 🆕 | `from weatherai.models.canglong import Canglong, Canglong_lite, load_official` | 3-D Earth-specific transformer for 1–3-month global SST · *Adv. Sci.* · [paper](https://doi.org/10.1002/advs.78271) · [docs](docs/models/canglong.md) · 🔓 🎯 ⚡ 🪶 |
 | **FuXi-S2S** | `from weatherai.models.fuxi_s2s.convert import load_official` | Sub-seasonal Swin-V2 ensemble (1.04 B), rebuilt from ONNX · *Nat. Commun.* 2024 · [paper](https://doi.org/10.1038/s41467-024-50714-1) · [docs](docs/models/fuxi_s2s.md) · 🔓 🎯 ⚡ 🪶 |
 | **UniCM** | `from weatherai.models.unicm import UniCM, UniCMConfig` | Coupled climate-mode transformer (ENSO and other modes) · *Nat. Mach. Intell.* 2026 · [paper](https://doi.org/10.1038/s42256-026-01245-5) · [docs](docs/models/unicm.md) · 🎯 ⚡ 🪶 |
 | **ORCA-DL** | `from weatherai.models.orca_dl import ORCADL, load_official` | Global 3-D ocean forecaster, monthly steps · *Sci. Adv.* 2025 · [paper](https://doi.org/10.1126/sciadv.adu2488) · [docs](docs/models/orca_dl.md) · 🔓 🎯 ⚡ |
