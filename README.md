@@ -1,7 +1,3 @@
-<!-- readme-visual-refresh:banner -->
-![WeatherAI — hand-drawn project banner](assets/readme/banner.svg)
-<!-- /readme-visual-refresh:banner -->
-
 <div align="center">
 
 <img src="docs/assets/banner.png" alt="WeatherAI: 20 peer-reviewed weather and climate AI models in one readable PyTorch library" width="100%">
