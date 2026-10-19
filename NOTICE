@@ -115,6 +115,17 @@ Copyright (c) 2024 Longhao Wang
 `utils/*.py`) with identical parameter names; the transformer blocks are the WeatherLearn-derived Pangu modules above.
 Pretrained weights (figshare 10.6084/m9.figshare.26779969) are not redistributed.
 
+October 2026 research additions
+-------------------------------
+PBC: independent tensor implementation of the equations/algorithms in Guan et al.,
+Nature 2026, doi:10.1038/s41586-026-11126-x. Official MIT implementation:
+https://github.com/mouatadid/pbc (d59e18f720bac712e18563bd469d4679c120f9e5).
+GenFocal: native approximate U-ViT/ReFlow/EDM modules and an optional wrapper
+around the Apache-2.0 upstream implementation:
+https://github.com/google-research/swirl-dynamics (0beb5d20a5b31969e12069ba7d86fc0537e08528).
+Translocation: independent ERF diagnostic wrapper for Sun et al., Science Advances
+2026, doi:10.1126/sciadv.ady9406; no third-party model weights are redistributed.
+
 Package rename
 --------------
 Imports use the package name `weatherai` (not `weatherlearn`). Relative module

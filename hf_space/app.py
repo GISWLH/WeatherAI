@@ -121,6 +121,12 @@ def unit_tests(model: str) -> str:
     return (r.stdout + r.stderr)[-4000:] + f"\nEXIT={r.returncode}"
 
 
+@spaces.GPU(duration=60)
+def research_gpu():
+    from scripts.research_smoke import run
+    return json.dumps(run("cuda"), indent=2)
+
+
 with gr.Blocks(title="WeatherAI models smoke") as demo:
     gr.Markdown("# WeatherAI model smoke tests (ZeroGPU)\nRepo: https://github.com/GISWLH/WeatherAI")
     model = gr.Dropdown(MODELS, value=MODELS[0], label="model")
@@ -137,6 +143,10 @@ with gr.Blocks(title="WeatherAI models smoke") as demo:
     b_wf = gr.Button("Download official weights for the selected model (CPU, background; click again to poll)")
     b_wf.click(fetch_weights, [model], out, api_name="fetch_weights")
     b_ut.click(unit_tests, [model], out, api_name="unit_tests")
+    import weatherpre_space
+    b_research = gr.Button("Three-paper research smoke (ZeroGPU, synthetic)")
+    b_research.click(research_gpu, [], out, api_name="research_gpu")
+    weatherpre_space.tab()
 
 if __name__ == "__main__":
     demo.launch()

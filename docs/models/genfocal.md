@@ -1,4 +1,51 @@
-# GenFocal — lite native PyTorch flow core (parity vs official JAX), full checkpoints blocked
+# GenFocal — climate debiasing and generative regional downscaling
+
+## Update: two-stage interface, 19 October 2026
+
+`from weatherai import GenFocal, GenFocal_lite` now exposes a composition of
+the ReFlow debiasing network and a conditional EDM super-resolution network.
+The native SR adds noise-level preconditioning, weighted denoising loss and
+a single-segment Heun sampler. Both native U-ViTs remain approximations;
+they are **not compatible with official Orbax checkpoints**. Default lite
+weights are random. This is an architectural/testing implementation, not a
+trained regional climate product.
+
+```python
+from weatherai import GenFocal_lite
+model = GenFocal_lite(channels=4).eval()
+# x, cond: normalized B,T,lon,lat,C tensors, with channel:mean/channel:std.
+result = model.downscale(x, cond, output_size=(8, 32, 16),
+                         flow_steps=8, diffusion_steps=16)
+```
+
+The native interpolation uses bilinear space and replicated time; official
+daily/hourly preprocessing, positional embeddings, filtered resizes, local
+regional padding, classifier-free guidance, multi-device overlap consensus
+and full official network weight parity are not claimed. Physical output
+requires an explicit physical baseline plus residual climatology mean/std.
+
+`GenFocalOfficial` in `weatherai.models.genfocal` builds the **actual upstream**
+ReFlow or EDM U-ViT from official JSON/YAML configs and optionally restores
+Orbax state/EMA. It is lazy and separate from the lite PyTorch API. Inspected
+upstream: `google-research/swirl-dynamics@0beb5d20a5b31969e12069ba7d86fc0537e08528`.
+The wrapper follows upstream construction/restoration code, but full checkpoint
+inference has not been executed here. Use upstream's recommended Linux/Python
+3.12 environment; the existing Space uses Python 3.10, below upstream's >=3.11.
+
+The previous archive-size obstacle has an alternative: the public GCS prefix
+`gs://genfocal/super_resolution/checkpoints/conus_7d_t2m_w10m_q1000_msl/`
+contains 12 actual files, **2.022 GiB** (2.171 GB), excluding directory markers.
+`python scripts/fetch_genfocal.py` inventories it; `--download --out PATH`
+downloads that one subtree with size/checksum checks. The verified manifest is
+[recorded here](../results/genfocal_conus_checkpoint_manifest.json). No old
+content was deleted and no weights have been loaded in the native models.
+
+The complete public archives remain [Zenodo 21285802](https://zenodo.org/records/21285802):
+8,737,960,532-byte SR and 39,143,363,979-byte debiasing tarballs (CC-BY-4.0).
+[Code archive](https://zenodo.org/records/21268077), Apache-2.0.
+See [three-paper integration and test scope](../research_20261019.md).
+
+## Historical flow-core verification (2 October 2026)
 
 [← Model zoo](../../README.md) · [All model pages](README.md) · **Paper:** *Nature Machine Intelligence* 2026, [doi:10.1038/s42256-026-01308-7](https://doi.org/10.1038/s42256-026-01308-7)
 

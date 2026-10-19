@@ -6,6 +6,7 @@ GraphCast).
 """
 
 from .models import (
+    GenFocal, GenFocal_lite, PBC, PBC_lite, Translocation, Translocation_lite,
     FengWu,
     FengWu_lite,
     FuXi,
@@ -18,6 +19,7 @@ from .models import (
 
 __version__ = "0.1.0"
 __all__ = [
+    "GenFocal", "GenFocal_lite", "PBC", "PBC_lite", "Translocation", "Translocation_lite",
     "Pangu",
     "Pangu_lite",
     "FuXi",

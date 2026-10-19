@@ -1,3 +1,7 @@
+**2026-10-19 更新：** 已添加 [PBC 次季节概率订正、GenFocal 两阶段 lite 降尺度、灰天鹅迁移机制诊断](docs/research_20261019.md)，
+支持按名称 import，并接入 WeatherPre。三项均通过真实 HF ZeroGPU 合成数据测试；
+lite 网络未加载官方权重，不代表已复现论文预报精度。Science Advances 论文属于已有模型的机制研究，不计作新预报模型。
+
 <div align="center">
 
 <img src="docs/assets/banner.png" alt="WeatherAI：20 个经同行评审的天气与气候 AI 模型，一个易读的 PyTorch 库" width="100%">

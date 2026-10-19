@@ -1,0 +1,67 @@
+{
+  "bucket": "genfocal",
+  "prefix": "super_resolution/checkpoints/conus_7d_t2m_w10m_q1000_msl/",
+  "bytes": 2170982546,
+  "files": [
+    {
+      "name": "super_resolution/checkpoints/conus_7d_t2m_w10m_q1000_msl/300000/_CHECKPOINT_METADATA",
+      "size": "362",
+      "md5Hash": "q/3vIu2Y730tweMZ87nn3w=="
+    },
+    {
+      "name": "super_resolution/checkpoints/conus_7d_t2m_w10m_q1000_msl/300000/default/_METADATA",
+      "size": "2392022",
+      "md5Hash": "cS3/32k9sJdvOPia0qwwEg=="
+    },
+    {
+      "name": "super_resolution/checkpoints/conus_7d_t2m_w10m_q1000_msl/300000/default/d/7439eda6c3e6e87916038ebc4dd998f0",
+      "size": "462668",
+      "md5Hash": "aHFbDp+jKU8a6NG0nc/P6w=="
+    },
+    {
+      "name": "super_resolution/checkpoints/conus_7d_t2m_w10m_q1000_msl/300000/default/descriptor/descriptor.pbtxt",
+      "size": "603",
+      "md5Hash": "SiCo/AzM0Ks0lj8QmixD+Q=="
+    },
+    {
+      "name": "super_resolution/checkpoints/conus_7d_t2m_w10m_q1000_msl/300000/default/descriptor/uuid-8a184d56-8dcf-40a9-ae38-95d7d3e0ada9",
+      "size": "45",
+      "md5Hash": "XK5HV0QuHr9mNPKk2tNR1w=="
+    },
+    {
+      "name": "super_resolution/checkpoints/conus_7d_t2m_w10m_q1000_msl/300000/default/manifest.ocdbt",
+      "size": "120",
+      "md5Hash": "1bH+xWAU3VGtBaFKDQUPeA=="
+    },
+    {
+      "name": "super_resolution/checkpoints/conus_7d_t2m_w10m_q1000_msl/300000/default/ocdbt.process_0/d/30c185ac8e2fd5354faed82fea42f6a8",
+      "size": "491221716",
+      "md5Hash": "vOwP6BC9iX0/R+fj7BqAOQ=="
+    },
+    {
+      "name": "super_resolution/checkpoints/conus_7d_t2m_w10m_q1000_msl/300000/default/ocdbt.process_0/d/699723e630fad9664c54afc26f8a2b8a",
+      "size": "13186163",
+      "md5Hash": "wXVYxBQMwAt5k/7cQS0Meg=="
+    },
+    {
+      "name": "super_resolution/checkpoints/conus_7d_t2m_w10m_q1000_msl/300000/default/ocdbt.process_0/d/728297cc90f679faa5742e8e82bef1f9",
+      "size": "1663715728",
+      "md5Hash": "57FFNhtcWg9mf7OeAhmQvA=="
+    },
+    {
+      "name": "super_resolution/checkpoints/conus_7d_t2m_w10m_q1000_msl/300000/default/ocdbt.process_0/d/a0c5f2e9a06c9cd99dc5d6904b982b27",
+      "size": "2353",
+      "md5Hash": "aZa2oWZ0B/+x/vK+SrJ/Ag=="
+    },
+    {
+      "name": "super_resolution/checkpoints/conus_7d_t2m_w10m_q1000_msl/300000/default/ocdbt.process_0/manifest.ocdbt",
+      "size": "282",
+      "md5Hash": "CzA2k1LhZI4pYO9/CBvfUw=="
+    },
+    {
+      "name": "super_resolution/checkpoints/conus_7d_t2m_w10m_q1000_msl/config.json",
+      "size": "484",
+      "md5Hash": "pVd7JgtvGK5ktsjRj7hLCw=="
+    }
+  ]
+}

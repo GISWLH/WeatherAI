@@ -19,3 +19,8 @@ remotezip
 onnx
 netcdf4
 omegaconf
+
+# WeatherPre tab: ECMWF open data + GRIB
+ecmwf-opendata
+cfgrib
+eccodes

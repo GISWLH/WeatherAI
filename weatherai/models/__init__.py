@@ -12,11 +12,15 @@ from .weathernext_cyclones import WeatherNextCyclonesNet, WeatherNextCyclonesNet
 from .neuralgcm.neuralgcm import NeuralGCM_lite, NeuralGCMWrapper
 from .fuxi_ens import FuXiENS, FuXiENS_lite, FuXiENSConfig, FuXiENSNoise
 from .canglong import Canglong, Canglong_lite, CanglongConfig
+from .genfocal import GenFocal, GenFocal_lite
+from .pbc import PBC, PBC_lite
+from .translocation import Translocation, Translocation_lite
 
 # Preferred alias (paper-style capitalization)
 FuXi = Fuxi
 
 __all__ = [
+    "GenFocal", "GenFocal_lite", "PBC", "PBC_lite", "Translocation", "Translocation_lite",
     "Pangu",
     "Pangu_lite",
     "FuXi",

@@ -13,6 +13,11 @@ suggested_hardware: zero-a10g
 
 # WeatherAI model smoke tests (ZeroGPU)
 
+The `/research_gpu` endpoint checks PBC calibration, two-stage GenFocal lite
+and gray-swan/GraphCast ERF on CUDA using synthetic inputs. These are research
+methods, not three pretrained forecast products. The existing WeatherPre
+Aurora tab and `/weatherpre_aurora` endpoint are preserved.
+
 Runs `scripts/gpu_smoke.py <model>` and the model unit tests from
 [`GISWLH/WeatherAI`](https://github.com/GISWLH/WeatherAI) on a ZeroGPU (A10G/H200 slice)
 Pro GPU and prints one JSON line per run: status, wall-clock seconds, GPU name, peak memory,

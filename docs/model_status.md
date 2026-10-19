@@ -1,5 +1,13 @@
 # New-model status & verification log
 
+## 19 October 2026: PBC, GenFocal two-stage lite, gray-swan diagnostics
+
+See [implementation, classification and limits](research_20261019.md),
+[PBC](models/pbc.md), [GenFocal update](models/genfocal.md), and
+[translocation](models/translocation.md). Core tests use independent numerical
+oracles; the HF report records actual CUDA smoke evidence separately from
+forecast skill. Later entries below retain their original historical scope.
+
 What each added model **is** (re-implementation vs. wrapper) and what was **actually verified**.
 "Smoke" = finite forward (and backward where stated) at the listed shapes. Nothing here is a
 forecast-skill claim. GPU runs: Hugging Face Space

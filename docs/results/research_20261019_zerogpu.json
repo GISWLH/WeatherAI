@@ -1,0 +1,46 @@
+{
+  "device": "cuda",
+  "torch": "2.13.0+cu130",
+  "pretrained": false,
+  "input_data": "synthetic",
+  "forecast_skill_evaluated": false,
+  "models": {
+    "pbc": {
+      "finite": true,
+      "valid_probabilities": true,
+      "max_abs_vs_cpu": 7.450580596923828e-07,
+      "cpu_agreement": true
+    },
+    "genfocal": {
+      "finite": true,
+      "two_stage_backward": true,
+      "output_shape": [
+        1,
+        4,
+        16,
+        16,
+        2
+      ],
+      "parameters": 103684,
+      "scope": "approximate two-stage U-ViT, ReFlow + EDM Heun"
+    },
+    "translocation": {
+      "finite": true,
+      "nonzero_erf": true,
+      "gradient_shape": [
+        1,
+        4,
+        8,
+        16
+      ],
+      "scope": "GraphCast lite signed ERF; not a new forecasting architecture"
+    }
+  },
+  "gpu": "NVIDIA RTX PRO 6000 Blackwell Server Edition MIG 2g.48gb",
+  "peak_gpu_mem_MB": 66.8583984375,
+  "seconds": 1.6235011639982986,
+  "status": "PASS",
+  "space": "LonghaoWang/weatherai-graphcast-smoke",
+  "space_revision": "a6d3bbeb05e341864c49ec52780c5952d74d533b",
+  "timestamp_utc": "2026-10-19T15:44:37.355069+00:00"
+}

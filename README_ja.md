@@ -1,3 +1,7 @@
+**2026-10-19:** [PBC、GenFocal 2段階 lite、gray-swan translocation 診断](docs/research_20261019.md)
+を追加し、WeatherPre に統合。合成データで HF ZeroGPU テストに合格。
+lite は未学習であり、論文の予報精度の再現を意味しません。
+
 <div align="center">
 
 <img src="docs/assets/banner.png" alt="WeatherAI：査読済みの気象・気候 AI モデル 20 種を、読みやすい 1 つの PyTorch ライブラリに" width="100%">

@@ -7,6 +7,8 @@ published on the Hugging Face Hub ([LonghaoWang/WeatherAI](https://huggingface.c
 
 | Group | Model | Page | Paper |
 |-------|-------|------|-------|
+| 🎯 Probabilistic S2S calibration | PBC | [pbc.md](pbc.md) | *Nature* 2026, [doi:10.1038/s41586-026-11126-x](https://doi.org/10.1038/s41586-026-11126-x) |
+| 🔬 Extreme-event diagnostics | Gray-swan translocation (existing backbones) | [translocation.md](translocation.md) | *Science Advances* 2026, [doi:10.1126/sciadv.ady9406](https://doi.org/10.1126/sciadv.ady9406) |
 | 🌍 Medium-range | Pangu-Weather | [pangu.md](pangu.md) | *Nature* 2023, [doi:10.1038/s41586-023-06185-3](https://doi.org/10.1038/s41586-023-06185-3) |
 | 🌍 Medium-range | FuXi | [fuxi.md](fuxi.md) | *npj Climate and Atmospheric Science* 2023, [doi:10.1038/s41612-023-00512-1](https://doi.org/10.1038/s41612-023-00512-1) |
 | 🌍 Medium-range | FengWu | [fengwu.md](fengwu.md) | *Communications Earth & Environment* 2025, [doi:10.1038/s43247-025-02502-y](https://doi.org/10.1038/s43247-025-02502-y) |

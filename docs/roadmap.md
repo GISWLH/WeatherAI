@@ -1,5 +1,9 @@
 # Roadmap & planned models
 
+19 October update: [PBC calibration, two-stage GenFocal lite and gray-swan ERF](research_20261019.md)
+are available as imports and in WeatherPre's research catalog. Full official
+GenFocal checkpoint inference and real-data paper replication remain open.
+
 [← Model zoo](../README.md) · Status log: [model_status.md](model_status.md) · Survey: [candidate_models_nature_science.md](candidate_models_nature_science.md)
 
 ## Roadmap

@@ -21,6 +21,17 @@ Load the official weights, compare with the original, fine-tune, or start from a
 
 ## ✨ Highlights
 
+**19 Oct 2026 research update:** [PBC probabilistic S2S calibration, GenFocal two-stage
+lite downscaling, and gray-swan translocation diagnostics](docs/research_20261019.md)
+are importable by name and integrated with WeatherPre. All three passed the
+[synthetic ZeroGPU smoke](docs/results/research_20261019_zerogpu.json).
+PBC and the diagnostic wrapper extend the existing 20-model zoo; they are not
+two additional pretrained weather forecasters.
+
+```python
+from weatherai import PBC, PBC_lite, GenFocal, GenFocal_lite, Translocation, Translocation_lite
+```
+
 - 🧩 **20 models, one library** — Pangu, GraphCast, Aurora, GenCast, NeuralGCM, FuXi-S2S, CAS-Canglong and more, all
   with the same `import` style and plain tensors in / tensors out. No per-model environments to juggle.
 - 🔀 **Multi-framework** — native PyTorch throughout; official **JAX** code is kept where it matters (NeuralGCM training and
