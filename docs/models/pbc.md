@@ -1,46 +1,46 @@
-# PBC: probabilistic subseasonal calibration
+# PBC — official probabilistic subseasonal calibration
 
-[Model pages](README.md) · [Three-paper integration](../research_20261019.md)
+Guan et al., *Advancing subseasonal forecasting with machine learning*, Nature
+2026. [Paper](https://doi.org/10.1038/s41586-026-11126-x) ·
+[Author code](https://github.com/mouatadid/pbc/tree/d59e18f720bac712e18563bd469d4679c120f9e5) ·
+[Archived release](https://zenodo.org/records/22238796).
 
-Guan et al., **Advancing subseasonal forecasting with machine learning**, Nature,
-14 October 2026. [Paper](https://doi.org/10.1038/s41586-026-11126-x).
-[Official MIT code](https://github.com/mouatadid/pbc), inspected at
-`d59e18f720bac712e18563bd469d4679c120f9e5`;
-[archived release](https://zenodo.org/records/22238796).
-
-PBC is statistical post-processing, not an autoregressive neural forecaster.
-It combines Debias++ (historical CDF bias subtraction), Persistence++ (per-grid,
-per-threshold least squares on intercept, rolling climatology, two observable
-lag indicators and raw forecast CDF), clip-then-isotonic CDF projection, and
-equal-weight averaging. Forecasts in the paper cover days 19-25 and 26-32.
-These are target-relative lead windows, **not** WeatherPre's standard weeks 3/4
-(days 14-21/21-28); do not interchange the labels.
+`PBC` executes the unchanged official scripts pinned to
+`d59e18f720bac712e18563bd469d4679c120f9e5`. The paper combines Debias++,
+Persistence++, CDF projection and probabilistic ensembling. It is statistical
+post-processing, not a new autoregressive neural forecaster.
 
 ```python
-from weatherai import PBC, PBC_lite
-model = PBC()  # PBC_lite() uses the same statistical algorithm
-model.fit(raw_train, observed_train, clim_train, lag1_train, lag2_train,
-          debias_raw=seasonal_raw, debias_observed=seasonal_observed)
-cdf = model(raw, climatology, lag1, lag2, debias_target=raw_observed_thresholds)
-probabilities = model.predict_proba(raw, climatology, lag1, lag2)
+from weatherai import PBC
+model = PBC(work_dir="pbc-work")
+# Official baseline, runnable without reforecast archives:
+result = model.run("climatology", "era5-f1_mslp", 19, target_dates="20200106")
+# After preparing author-format historical data and component forecasts:
+# model.run("ecmwfpp", "era5-f1_mslp", 19, target_dates="20200106", arguments=(...))
+# model.run("perpp_ecmwf", "era5-f1_mslp", 19, target_dates="20200106", arguments=(...))
+# model.run("projector", "era5-mslp", 19, target_dates="20200106", arguments=(...))
+# model.run("pbc_ecmwf", "era5-f1_mslp", 19, target_dates="20200106")
 ```
 
-Tensor axes: `(sample, *grid, K-1)` in training; either that layout or `(*grid,
-K-1)` in prediction. Four CDF thresholds produce five category probabilities.
-`ensemble_cdf` uses strict `<`, including ties at zero precipitation. Save/load
-the fitted parameters with `state_dict`; there is no universal pretrained
-checkpoint in the official release. SVD least squares also handles collinear
-predictors on CUDA. The lite variant reduces data/grid size, not the algorithm.
+There is **no universal pretrained checkpoint in the official release**.
+Coefficients depend on variable, grid, target date and historical observations/
+reforecasts. `PBC.from_pretrained` raises an explanatory error. Author code/data
+layout and selection configuration are preserved; missing data never trigger a
+lite substitute. Original scripts sometimes exit successfully after skipping
+missing inputs, so inspect their logs and expected NetCDF outputs.
 
-Scope: the numerical kernels are implemented. Users must prepare the paper's
-20-year climatologies, model/observed quintile thresholds, hindcasts, seasonal
-training windows and observable lags; the rolling three-year selection over
-Debias++ spans 14/28/35 and issuance-date ensembles is not automated here.
-Pass separately prepared Debias and Persistence CDFs when their thresholds
-differ (as they do in several official experiments). Fit only on observations
-available at issuance. No live data download, paper RPSS replication, POET,
-AIFS-SUBS retraining, or MicroDuet operational product is claimed.
+Recommended runtime: author's Linux/Python 3.13 environment; the tested CPU
+stages also ran on Windows/Python 3.13. Dependencies include NumPy, pandas,
+xarray, netCDF4, dask, scikit-learn, ttictoc and setuptools with pkg_resources.
+The full archive preparation uses further tools listed upstream.
 
-Tests compare the isotonic result to SciPy and the fitted coefficients to
-independent NumPy least squares, and check category normalization, rank
-deficiency, strict ties, invalid inputs and checkpoint round trips.
+`python scripts/validate_official_pbc.py` actually runs the original climatology,
+projector and equal-weight PBC scripts. A synthetic fixture verifies clipping,
+isotonic projection and final CDF `[0.05, 0.35, 0.55, 0.95]`.
+[Execution report](../results/pbc_official_execution.json). This is not a
+historical fit or reproduction of the paper's skill scores.
+
+`PBC_lite()` is the earlier independent tensor approximation, with `.fit`,
+`.predict_proba` and `state_dict`. It requires explicitly prepared CDF histories;
+it is not the official pipeline. Official target windows are days 19–25 and
+26–32, distinct from WeatherPre's generic weekly windows. Code license: MIT.

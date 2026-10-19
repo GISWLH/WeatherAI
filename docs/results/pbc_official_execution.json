@@ -1,0 +1,38 @@
+{
+  "status": "PASS",
+  "implementation": "official",
+  "provenance": {
+    "repository": "https://github.com/mouatadid/pbc.git",
+    "revision": "d59e18f720bac712e18563bd469d4679c120f9e5",
+    "license": "MIT",
+    "implementation": "official",
+    "pretrained": false,
+    "weights": "fit per task/date/grid using historical data"
+  },
+  "stages": [
+    "climatology",
+    "projector",
+    "pbc_ecmwf equal ensemble"
+  ],
+  "input_cdfs": [
+    [
+      -0.2,
+      0.7,
+      0.3,
+      1.2
+    ],
+    [
+      0.1,
+      0.2,
+      0.6,
+      0.9
+    ]
+  ],
+  "output_cdf": [
+    0.05,
+    0.35,
+    0.55,
+    0.95
+  ],
+  "scope": "original author scripts on synthetic NetCDF fixture; no historical fit or skill claim"
+}

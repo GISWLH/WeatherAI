@@ -30,6 +30,8 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["pytest>=7.0", "pytest-cov"]
 data = ["cdsapi>=0.6.1"]
+official-assets = ["tensorstore", "requests"]
+pbc = ["pandas", "xarray", "netCDF4", "dask", "scikit-learn", "ttictoc", "setuptools<81"]
 # Official Microsoft Aurora (PyTorch, MIT) — needed by weatherai.models.aurora
 aurora = ["microsoft-aurora", "einops", "scipy"]
 # Official NeuralGCM (JAX) — needed by weatherai.models.neuralgcm

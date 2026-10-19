@@ -83,7 +83,7 @@ class GenFocalSuperResolution(nn.Module):
         return x
 
 
-class GenFocal(nn.Module):
+class GenFocalLite(nn.Module):
     """Compose explicit debiasing and super-resolution modules.
 
     Inputs and conditions are normalized tensors, not raw GCM fields.
@@ -121,4 +121,4 @@ class GenFocal(nn.Module):
 def GenFocal_lite(channels=4):
     """Random-weight two-stage U-ViT; train before interpreting predictions."""
     cfg = GenFocalNetConfig.lite(channels)
-    return GenFocal(GenFocalNet(cfg), GenFocalSuperResolution(cfg))
+    return GenFocalLite(GenFocalNet(cfg), GenFocalSuperResolution(cfg))

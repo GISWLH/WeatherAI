@@ -59,7 +59,7 @@ def seasonal_mask(dates, target, span=28, years=20):
     return (delta > 0) & (year_diff <= years) & (day_diff <= span)
 
 
-class PBC(nn.Module):
+class PBCLite(nn.Module):
     """Fit per-grid/per-threshold corrections on historical CDFs.
 
     Arrays: (sample, *grid, K-1). Persistence predictors, in paper order:
@@ -130,4 +130,4 @@ class PBC(nn.Module):
 
 def PBC_lite():
     """Same exact statistical algorithm; reduce the grid/history for a lite run."""
-    return PBC()
+    return PBCLite()

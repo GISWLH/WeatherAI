@@ -1,9 +1,9 @@
 """Probabilistic bias correction (Guan et al., Nature 2026).
 
-Tensor implementation of Debias++, Persistence++, isotonic projection and
-equal-weight ensembling. Inputs are prepared CDFs, not deterministic fields.
-Calendar selection/validation must precede fit; no universal weights exist.
+PBC executes the author's original scripts. PBCLite/PBC_lite is the separate
+tensor approximation. Historical data are required; no universal weights exist.
 """
-from .model import PBC, PBC_lite, ensemble_cdf, project_cdf, seasonal_mask
+from .official import PBC
+from .model import PBCLite, PBC_lite, ensemble_cdf, project_cdf, seasonal_mask
 
-__all__ = ["PBC", "PBC_lite", "ensemble_cdf", "project_cdf", "seasonal_mask"]
+__all__ = ["PBC", "PBCLite", "PBC_lite", "ensemble_cdf", "project_cdf", "seasonal_mask"]

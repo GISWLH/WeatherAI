@@ -1,6 +1,4 @@
-**2026-10-19:** [PBC、GenFocal 2段階 lite、gray-swan translocation 診断](docs/research_20261019.md)
-を追加し、WeatherPre に統合。合成データで HF ZeroGPU テストに合格。
-lite は未学習であり、論文の予報精度の再現を意味しません。
+**2026-10-19 公式実装への更新：** [3論文と実行記録](docs/research_20261019.md)。主要 API は固定された著者コードと公開学習済み重みを使用します。PBC は公式の履歴データ学習処理です。独自の未学習実装は明示的な lite API に分離しました。
 
 <div align="center">
 
@@ -78,7 +76,7 @@ aurora = Aurora_small(pretrained=True)                  # 公式の重み（約 
 | **UniCM** | `from weatherai.models.unicm import UniCM, UniCMConfig` | 結合気候モード Transformer（ENSO など） · *Nat. Mach. Intell.* 2026 · [論文](https://doi.org/10.1038/s42256-026-01245-5) · [docs](docs/models/unicm.md) · 🎯 ⚡ 🪶 |
 | **ORCA-DL** | `from weatherai.models.orca_dl import ORCADL, load_official` | 全球 3 次元海洋予測（月単位ステップ） · *Sci. Adv.* 2025 · [論文](https://doi.org/10.1126/sciadv.adu2488) · [docs](docs/models/orca_dl.md) · 🔓 🎯 ⚡ |
 | **ACE2-ERA5** | `from weatherai.models.ace2 import ACE2, load_official` | 保存則を組み込んだ球面フーリエニューラル演算子の気候エミュレータ · *npj Clim. Atmos. Sci.* 2025 · [論文](https://doi.org/10.1038/s41612-025-01090-0) · [docs](docs/models/ace2.md) · 🔓 🎯 ⚡ |
-| **GenFocal** | `from weatherai.models.genfocal import GenFocalNet, reflow_loss, sample_flow` | 生成型バイアス補正フロー（lite コア） · *Nat. Mach. Intell.* 2026 · [論文](https://doi.org/10.1038/s42256-026-01308-7) · [docs](docs/models/genfocal.md) · 🎯 ⚡ 🪶 |
+| **GenFocal** | `from weatherai import GenFocal, GenFocal_lite` | 公式学習済み ReFlow + SR、別途 lite · *Nat. Mach. Intell.* 2026 · [論文](https://doi.org/10.1038/s42256-026-01308-7) · [docs](docs/models/genfocal.md) · 🎯 ⚡ 🪶 |
 
 ### 🌀 領域予報・熱帯低気圧
 

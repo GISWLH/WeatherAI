@@ -1,6 +1,4 @@
-**2026-10-19 更新：** 已添加 [PBC 次季节概率订正、GenFocal 两阶段 lite 降尺度、灰天鹅迁移机制诊断](docs/research_20261019.md)，
-支持按名称 import，并接入 WeatherPre。三项均通过真实 HF ZeroGPU 合成数据测试；
-lite 网络未加载官方权重，不代表已复现论文预报精度。Science Advances 论文属于已有模型的机制研究，不计作新预报模型。
+**2026-10-19 官方实现更新：** [三篇论文与执行报告](docs/research_20261019.md)。主体 `GenFocal`、`PBC`、`Translocation` 已改用固定版本的作者代码；GenFocal/GraphCast 自动获取官方预训练权重，PBC 使用作者历史数据拟合流程（没有通用权重）。自写实验版本仅保留在 lite 名下，WeatherPre 默认加载官方入口。
 
 <div align="center">
 
@@ -78,7 +76,7 @@ aurora = Aurora_small(pretrained=True)                  # 官方权重（约 450
 | **UniCM** | `from weatherai.models.unicm import UniCM, UniCMConfig` | 耦合气候模态 Transformer（ENSO 等） · *Nat. Mach. Intell.* 2026 · [论文](https://doi.org/10.1038/s42256-026-01245-5) · [docs](docs/models/unicm.md) · 🎯 ⚡ 🪶 |
 | **ORCA-DL** | `from weatherai.models.orca_dl import ORCADL, load_official` | 全球三维海洋预报，月尺度步长 · *Sci. Adv.* 2025 · [论文](https://doi.org/10.1126/sciadv.adu2488) · [docs](docs/models/orca_dl.md) · 🔓 🎯 ⚡ |
 | **ACE2-ERA5** | `from weatherai.models.ace2 import ACE2, load_official` | 带守恒约束的球面傅里叶神经算子气候模拟器 · *npj Clim. Atmos. Sci.* 2025 · [论文](https://doi.org/10.1038/s41612-025-01090-0) · [docs](docs/models/ace2.md) · 🔓 🎯 ⚡ |
-| **GenFocal** | `from weatherai.models.genfocal import GenFocalNet, reflow_loss, sample_flow` | 生成式偏差订正流模型（lite 核心） · *Nat. Mach. Intell.* 2026 · [论文](https://doi.org/10.1038/s42256-026-01308-7) · [docs](docs/models/genfocal.md) · 🎯 ⚡ 🪶 |
+| **GenFocal** | `from weatherai import GenFocal, GenFocal_lite` | 生成式偏差订正流模型（lite 核心） · *Nat. Mach. Intell.* 2026 · [论文](https://doi.org/10.1038/s42256-026-01308-7) · [docs](docs/models/genfocal.md) · 🎯 ⚡ 🪶 |
 
 ### 🌀 区域与热带气旋
 

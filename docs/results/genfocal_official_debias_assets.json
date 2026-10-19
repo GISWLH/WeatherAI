@@ -1,0 +1,9 @@
+{
+  "source": "debiasing/checkpoints/reflow_uvit/300000/default/",
+  "tree_prefix": "params.",
+  "parameter_count": 2656553626,
+  "bytes": 10626214504,
+  "source_revision": "0beb5d20a5b31969e12069ba7d86fc0537e08528",
+  "tensor_count": 2310,
+  "tensor_manifest_sha256": "56658561029fb0b257b46f74a733476d958057c65ed3970a5448fb601b8f9909"
+}

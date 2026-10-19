@@ -53,10 +53,10 @@ def rewrite(text, src_file, hub_file):
         if re.match(r"^[a-z]+:|^#", target):
             return m.group(0)
         path, frag = (target.split("#", 1) + [""])[:2]
-        repo_path = os.path.normpath(os.path.join(os.path.dirname(src_file), path))
+        repo_path = os.path.normpath(os.path.join(os.path.dirname(src_file), path)).replace("\\", "/")
         hub = _hub_path(repo_path)
         if hub is not None:
-            new = os.path.relpath(hub, os.path.dirname(hub_file) or ".")
+            new = os.path.relpath(hub, os.path.dirname(hub_file) or ".").replace("\\", "/")
         else:
             kind = "tree" if os.path.isdir(os.path.join(ROOT, repo_path)) else "blob"
             new = f"{GITHUB}/{kind}/main/{repo_path}"

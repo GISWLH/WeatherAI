@@ -1,6 +1,6 @@
 import pytest
 import torch
-from weatherai.models.translocation import Translocation, Translocation_lite
+from weatherai.models.translocation import TranslocationLite as Translocation, Translocation_lite
 
 
 def test_signed_erf_and_region_selection_analytical():

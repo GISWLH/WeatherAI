@@ -4,7 +4,7 @@ import torch
 from torch import nn
 
 
-class Translocation(nn.Module):
+class TranslocationLite(nn.Module):
     """Wrap a differentiable forecaster to compute the paper's signed ERF.
 
     Inputs/output: (B,C,H,W). Supply a physical-unit output wrapper and
@@ -55,5 +55,5 @@ class Translocation(nn.Module):
 def Translocation_lite(img_size=(8, 16), in_channels=4):
     """Random-weight, small GraphCast diagnostic harness; no Dubai skill claim."""
     from ..graphcast import GraphCast
-    return Translocation(GraphCast(img_size=img_size, in_channels=in_channels,
+    return TranslocationLite(GraphCast(img_size=img_size, in_channels=in_channels,
                                   mesh_level=1, processor_layers=2, hidden_dim=16)).eval()

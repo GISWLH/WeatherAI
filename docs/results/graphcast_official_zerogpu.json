@@ -1,0 +1,175 @@
+{
+  "status": "PASS",
+  "model": "graphcast",
+  "implementation": "official",
+  "pretrained": true,
+  "source_revision": "08cf73625c9d12bd9aaa038868bcb2fe488f2a22",
+  "checkpoint": "GraphCast_operational - ERA5-HRES 1979-2021 - resolution 0.25 - pressure levels 13 - mesh 2to6 - precipitation output only.npz",
+  "model_config": {
+    "resolution": 0.25,
+    "mesh_size": 6,
+    "latent_size": 512,
+    "gnn_msg_steps": 16,
+    "hidden_layers": 1,
+    "radius_query_fraction_edge_length": 0.5999912857713345,
+    "mesh2grid_edge_normalization_factor": 0.6180338738074472
+  },
+  "input_data": "official ERA5 example 2022-01-01",
+  "scope": "one-step 6h physical forecast, no skill claim",
+  "outputs": {
+    "10m_u_component_of_wind": {
+      "shape": [
+        1,
+        1,
+        721,
+        1440
+      ],
+      "finite": true,
+      "mean": -0.3130401074886322
+    },
+    "10m_v_component_of_wind": {
+      "shape": [
+        1,
+        1,
+        721,
+        1440
+      ],
+      "finite": true,
+      "mean": -0.32427018880844116
+    },
+    "2m_temperature": {
+      "shape": [
+        1,
+        1,
+        721,
+        1440
+      ],
+      "finite": true,
+      "mean": 277.2582702636719
+    },
+    "geopotential": {
+      "shape": [
+        1,
+        1,
+        13,
+        721,
+        1440
+      ],
+      "finite": true,
+      "mean": 77649.7265625
+    },
+    "mean_sea_level_pressure": {
+      "shape": [
+        1,
+        1,
+        721,
+        1440
+      ],
+      "finite": true,
+      "mean": 101095.9296875
+    },
+    "specific_humidity": {
+      "shape": [
+        1,
+        1,
+        13,
+        721,
+        1440
+      ],
+      "finite": true,
+      "mean": 0.0016552089946344495
+    },
+    "temperature": {
+      "shape": [
+        1,
+        1,
+        13,
+        721,
+        1440
+      ],
+      "finite": true,
+      "mean": 242.5801544189453
+    },
+    "total_precipitation_6hr": {
+      "shape": [
+        1,
+        1,
+        721,
+        1440
+      ],
+      "finite": true,
+      "mean": 0.0005696432781405747
+    },
+    "u_component_of_wind": {
+      "shape": [
+        1,
+        1,
+        13,
+        721,
+        1440
+      ],
+      "finite": true,
+      "mean": 7.554452419281006
+    },
+    "v_component_of_wind": {
+      "shape": [
+        1,
+        1,
+        13,
+        721,
+        1440
+      ],
+      "finite": true,
+      "mean": 0.04072889685630798
+    },
+    "vertical_velocity": {
+      "shape": [
+        1,
+        1,
+        13,
+        721,
+        1440
+      ],
+      "finite": true,
+      "mean": 0.0032169055193662643
+    }
+  },
+  "gpu": "cuda:0",
+  "seconds": 36.122513392940164,
+  "timestamp": "2026-10-19T16:50:03.017192+00:00",
+  "space": "LonghaoWang/weatherai-official",
+  "space_revision": "4c35a734fd514e1c2029dbaa67fa142149efe64f",
+  "assets": {
+    "checkpoint.npz": {
+      "source": "params/GraphCast_operational - ERA5-HRES 1979-2021 - resolution 0.25 - pressure levels 13 - mesh 2to6 - precipitation output only.npz",
+      "sha256": "8f485e84343072785522f6d0696c198c7712e9f0f14070a88c26a9ff35db75a9",
+      "bytes": 144203874
+    },
+    "example.nc": {
+      "source": "dataset/source-era5_date-2022-01-01_res-0.25_levels-13_steps-01.nc",
+      "sha256": "e9d5a1f05a05cfda615b8a9bea038417eef7f6c9ab4d46d71d1ba118685a5747",
+      "bytes": 1054862924
+    },
+    "diffs_stddev_by_level.nc": {
+      "source": "stats/diffs_stddev_by_level.nc",
+      "sha256": "e688fc51fe72e1dc897678ef5ce9889add64e28e13f3cec4758d8e47d429c1ce",
+      "bytes": 4416
+    },
+    "mean_by_level.nc": {
+      "source": "stats/mean_by_level.nc",
+      "sha256": "e6e724b94cd27707903cdc5cf5784d420bab306f722e631f4455e25c96da9931",
+      "bytes": 5776
+    },
+    "stddev_by_level.nc": {
+      "source": "stats/stddev_by_level.nc",
+      "sha256": "29f941d8c34906b87a1745f93b2308d1e169ec9bbdc4c5491479c771fe92c3cb",
+      "bytes": 5776
+    }
+  },
+  "versions": {
+    "jax": "0.6.2",
+    "flax": "0.10.7",
+    "orbax-checkpoint": "0.11.16",
+    "tensorstore": "0.1.85"
+  }
+}

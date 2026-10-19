@@ -3,7 +3,7 @@ import pytest
 import torch
 from scipy.optimize import isotonic_regression
 
-from weatherai.models.pbc import PBC, PBC_lite, project_cdf, ensemble_cdf, seasonal_mask
+from weatherai.models.pbc import PBCLite as PBC, PBC_lite, project_cdf, ensemble_cdf, seasonal_mask
 
 
 def test_projection_matches_independent_scipy_oracle():

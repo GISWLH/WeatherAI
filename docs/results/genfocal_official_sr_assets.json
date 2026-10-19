@@ -1,0 +1,10 @@
+{
+  "source": "super_resolution/checkpoints/conus_7d_t2m_w10m_q1000_msl/300000/default/",
+  "tree_prefix": "ema_state.ema.",
+  "parameter_count": 148738720,
+  "bytes": 594954880,
+  "source_revision": "0beb5d20a5b31969e12069ba7d86fc0537e08528",
+  "tensor_count": 1216,
+  "metadata_reconstruction": "Orbax key_metadata preserves literal dots",
+  "tensor_manifest_sha256": "c2b3d96ad974200ac1ec2faeaa29898b500d2af943f168f0fcec870b5e72e100"
+}

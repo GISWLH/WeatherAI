@@ -1,8 +1,8 @@
-"""WeatherAI: personal PyTorch weather deep learning model zoo.
+"""WeatherAI: weather models, official pretrained adapters and explicit lite models.
 
 Independent project by Longhao Wang (GISWLH). Model implementations are
 adapted from WeatherLearn (MIT) and paper-inspired skeletons (FengWu,
-GraphCast).
+GraphCast). GenFocal, PBC and Translocation main entries use pinned author code.
 """
 
 from .models import (

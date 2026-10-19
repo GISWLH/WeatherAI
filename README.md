@@ -21,10 +21,11 @@ Load the official weights, compare with the original, fine-tune, or start from a
 
 ## ✨ Highlights
 
-**19 Oct 2026 research update:** [PBC probabilistic S2S calibration, GenFocal two-stage
-lite downscaling, and gray-swan translocation diagnostics](docs/research_20261019.md)
-are importable by name and integrated with WeatherPre. All three passed the
-[synthetic ZeroGPU smoke](docs/results/research_20261019_zerogpu.json).
+**19 Oct 2026 research update:** [PBC probabilistic S2S calibration, GenFocal official pretrained
+downscaling, and gray-swan translocation diagnostics](docs/research_20261019.md)
+use pinned official code and published weights by default, with explicit separate lite variants.
+[Actual execution reports](docs/research_20261019.md#actual-validation) distinguish pretrained
+GPU inference from the earlier lite-only synthetic smoke. WeatherPre defaults to the official entries.
 PBC and the diagnostic wrapper extend the existing 20-model zoo; they are not
 two additional pretrained weather forecasters.
 
@@ -94,7 +95,7 @@ Each **docs** link opens a one-page summary: usage, what was verified, and what 
 | **UniCM** | `from weatherai.models.unicm import UniCM, UniCMConfig` | Coupled climate-mode transformer (ENSO and other modes) · *Nat. Mach. Intell.* 2026 · [paper](https://doi.org/10.1038/s42256-026-01245-5) · [docs](docs/models/unicm.md) · 🎯 ⚡ 🪶 |
 | **ORCA-DL** | `from weatherai.models.orca_dl import ORCADL, load_official` | Global 3-D ocean forecaster, monthly steps · *Sci. Adv.* 2025 · [paper](https://doi.org/10.1126/sciadv.adu2488) · [docs](docs/models/orca_dl.md) · 🔓 🎯 ⚡ |
 | **ACE2-ERA5** | `from weatherai.models.ace2 import ACE2, load_official` | Spherical Fourier neural operator climate emulator with conservation · *npj Clim. Atmos. Sci.* 2025 · [paper](https://doi.org/10.1038/s41612-025-01090-0) · [docs](docs/models/ace2.md) · 🔓 🎯 ⚡ |
-| **GenFocal** | `from weatherai.models.genfocal import GenFocalNet, reflow_loss, sample_flow` | Generative debiasing flow (lite core) · *Nat. Mach. Intell.* 2026 · [paper](https://doi.org/10.1038/s42256-026-01308-7) · [docs](docs/models/genfocal.md) · 🎯 ⚡ 🪶 |
+| **GenFocal** | `from weatherai import GenFocal, GenFocal_lite` | Official pretrained ReFlow + SR, separate lite · *Nat. Mach. Intell.* 2026 · [paper](https://doi.org/10.1038/s42256-026-01308-7) · [docs](docs/models/genfocal.md) · 🎯 ⚡ 🪶 |
 
 ### 🌀 Regional & tropical cyclones
 

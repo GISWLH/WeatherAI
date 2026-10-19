@@ -1,0 +1,133 @@
+{
+  "status": "PASS",
+  "model": "graphcast_small_erf",
+  "implementation": "official",
+  "pretrained": true,
+  "source_revision": "08cf73625c9d12bd9aaa038868bcb2fe488f2a22",
+  "checkpoint": "GraphCast_small - ERA5 1979-2015 - resolution 1.0 - pressure levels 13 - mesh 2to5 - precipitation input and output.npz",
+  "sha256": "e9438d8ad31ca6e1d3397a33b2508f4bbb6ec16aed84629f9a64712bf756bc29",
+  "erf_reference": "https://doi.org/10.5281/zenodo.18111128",
+  "scope": "official pretrained Small model; actual Translocation API and signed input gradients; ERA5 2022 sample, not Dubai 2024 event",
+  "location": {
+    "batch": 0,
+    "time": 0,
+    "lat": 115,
+    "lon": 55
+  },
+  "selected_precipitation": 0.0018398815300315619,
+  "gradients": {
+    "10m_u_component_of_wind": {
+      "finite": true,
+      "l1": 0.0002442388504277915
+    },
+    "10m_v_component_of_wind": {
+      "finite": true,
+      "l1": 0.00023563326976727694
+    },
+    "2m_temperature": {
+      "finite": true,
+      "l1": 0.0005296694580465555
+    },
+    "day_progress_cos": {
+      "finite": true,
+      "l1": 0.0005940430564805865
+    },
+    "day_progress_sin": {
+      "finite": true,
+      "l1": 0.0005940584233030677
+    },
+    "geopotential": {
+      "finite": true,
+      "l1": 0.00019170386076439172
+    },
+    "geopotential_at_surface": {
+      "finite": true,
+      "l1": 1.292507135985943e-06
+    },
+    "land_sea_mask": {
+      "finite": true,
+      "l1": 0.004324126988649368
+    },
+    "mean_sea_level_pressure": {
+      "finite": true,
+      "l1": 1.8285165424458683e-05
+    },
+    "specific_humidity": {
+      "finite": true,
+      "l1": 1545.3035888671875
+    },
+    "temperature": {
+      "finite": true,
+      "l1": 0.007101475261151791
+    },
+    "toa_incident_solar_radiation": {
+      "finite": true,
+      "l1": 1.3052497971344224e-09
+    },
+    "total_precipitation_6hr": {
+      "finite": true,
+      "l1": 0.9663676023483276
+    },
+    "u_component_of_wind": {
+      "finite": true,
+      "l1": 0.0028925645165145397
+    },
+    "v_component_of_wind": {
+      "finite": true,
+      "l1": 0.0027453117072582245
+    },
+    "vertical_velocity": {
+      "finite": true,
+      "l1": 0.058943770825862885
+    },
+    "year_progress_cos": {
+      "finite": true,
+      "l1": 1.0729278983490076e-05
+    },
+    "year_progress_sin": {
+      "finite": true,
+      "l1": 1.6066529497038573e-05
+    }
+  },
+  "gpu": "cuda:0",
+  "seconds": 20.45272122998722,
+  "timestamp": "2026-10-19T16:56:01.266793+00:00",
+  "space": "LonghaoWang/weatherai-official",
+  "space_revision": "c21d8aaf4166f93ebe41dd5be275a2ace341f804",
+  "assets": {
+    "checkpoint.npz": {
+      "source": "params/GraphCast_small - ERA5 1979-2015 - resolution 1.0 - pressure levels 13 - mesh 2to5 - precipitation input and output.npz",
+      "sha256": "e9438d8ad31ca6e1d3397a33b2508f4bbb6ec16aed84629f9a64712bf756bc29",
+      "bytes": 144041078
+    },
+    "example.nc": {
+      "source": "dataset/source-era5_date-2022-01-01_res-1.0_levels-13_steps-01.nc",
+      "sha256": "bd353937fa67579dac1cd03784a73901569819a6b54800abd705957a9a3ec453",
+      "bytes": 66207164
+    },
+    "diffs_stddev_by_level.nc": {
+      "source": "stats/diffs_stddev_by_level.nc",
+      "sha256": "e688fc51fe72e1dc897678ef5ce9889add64e28e13f3cec4758d8e47d429c1ce",
+      "bytes": 4416
+    },
+    "mean_by_level.nc": {
+      "source": "stats/mean_by_level.nc",
+      "sha256": "e6e724b94cd27707903cdc5cf5784d420bab306f722e631f4455e25c96da9931",
+      "bytes": 5776
+    },
+    "stddev_by_level.nc": {
+      "source": "stats/stddev_by_level.nc",
+      "sha256": "29f941d8c34906b87a1745f93b2308d1e169ec9bbdc4c5491479c771fe92c3cb",
+      "bytes": 5776
+    }
+  },
+  "versions": {
+    "jax": "0.6.2",
+    "flax": "0.10.7",
+    "orbax-checkpoint": "0.11.16",
+    "tensorstore": "0.1.85",
+    "xarray": "2024.11.0",
+    "pandas": "2.2.3",
+    "zarr": "2.18.7"
+  }
+}

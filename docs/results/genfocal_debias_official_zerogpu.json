@@ -1,0 +1,37 @@
+{
+  "status": "PASS",
+  "model": "genfocal_debias",
+  "source_revision": "0beb5d20a5b31969e12069ba7d86fc0537e08528",
+  "checkpoint": "debiasing/checkpoints/reflow_uvit/300000/default/",
+  "parameter_tree": "params.",
+  "parameter_count": 2656553626,
+  "parameter_bytes": 10626214504,
+  "pretrained": true,
+  "scope": "official pretrained full ReFlow vector field; synthetic normalized inputs; not an end-to-end climate run",
+  "output_shape": [
+    1,
+    8,
+    240,
+    121,
+    10
+  ],
+  "output_mean": 0.04069417715072632,
+  "output_std": 0.6856605410575867,
+  "gpu": "cuda:0",
+  "seconds": 146.12505604606122,
+  "timestamp": "2026-10-19T16:52:16.537149+00:00",
+  "space": "LonghaoWang/weatherai-official",
+  "space_revision": "4c35a734fd514e1c2029dbaa67fa142149efe64f",
+  "assets": {
+    "source": "debiasing/checkpoints/reflow_uvit/300000/default/",
+    "tree_prefix": "params.",
+    "parameter_count": 2656553626,
+    "bytes": 10626214504
+  },
+  "versions": {
+    "jax": "0.6.2",
+    "flax": "0.10.7",
+    "orbax-checkpoint": "0.11.16",
+    "tensorstore": "0.1.85"
+  }
+}

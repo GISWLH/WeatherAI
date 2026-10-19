@@ -1,0 +1,48 @@
+{
+  "status": "PASS",
+  "model": "genfocal_sr",
+  "source_revision": "0beb5d20a5b31969e12069ba7d86fc0537e08528",
+  "checkpoint": "super_resolution/checkpoints/conus_7d_t2m_w10m_q1000_msl/300000/default/",
+  "parameter_tree": "ema_state.ema.",
+  "parameter_count": 148738720,
+  "parameter_bytes": 594954880,
+  "pretrained": true,
+  "scope": "official EMA denoiser, full CONUS grid; real ERA5 conditions, zero residual at sigma=1; not a sampled forecast",
+  "output_shape": [
+    1,
+    84,
+    120,
+    240,
+    4
+  ],
+  "output_mean": -0.007380256429314613,
+  "output_std": 0.2695375084877014,
+  "gpu": "cuda:0",
+  "seconds": 52.991006067954004,
+  "timestamp": "2026-10-19T16:56:29.633593+00:00",
+  "space": "LonghaoWang/weatherai-official",
+  "space_revision": "c21d8aaf4166f93ebe41dd5be275a2ace341f804",
+  "assets": {
+    "source": "super_resolution/checkpoints/conus_7d_t2m_w10m_q1000_msl/300000/default/",
+    "tree_prefix": "ema_state.ema.",
+    "parameter_count": 148738720,
+    "bytes": 594954880,
+    "condition_shape": [
+      1,
+      84,
+      121,
+      240,
+      4
+    ],
+    "input_data": "official ERA5 example, 2015-08-01..07"
+  },
+  "versions": {
+    "jax": "0.6.2",
+    "flax": "0.10.7",
+    "orbax-checkpoint": "0.11.16",
+    "tensorstore": "0.1.85",
+    "xarray": "2024.11.0",
+    "pandas": "2.2.3",
+    "zarr": "2.18.7"
+  }
+}
